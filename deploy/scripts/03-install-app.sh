@@ -68,10 +68,12 @@ systemctl --user restart gandytrade-app.service
 echo "Waiting for the app to start..."
 for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:$APP_PORT/api/health" >/dev/null 2>&1; then
-    ok "App is running on 127.0.0.1:$APP_PORT (not reachable from outside yet)"
-    echo
-    echo "Next: create your login (as root):"
-    echo "  bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli create-user"
+    ok "App is running on 127.0.0.1:$APP_PORT"
+    if [ ! -s /etc/gandytrade/proxy-secret.conf ] 2>/dev/null && ! grep -q '^GT_PROXY_SECRET=' "$CONF/app.env"; then
+      echo
+      echo "First install? Next: create your login (as root):"
+      echo "  bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli create-user"
+    fi
     exit 0
   fi
   sleep 3

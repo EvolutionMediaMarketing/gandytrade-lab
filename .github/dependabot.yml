@@ -6,13 +6,30 @@ updates:
     directory: /backend
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    ignore:
+      # Major upgrades can break things; they're done deliberately, not automatically.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /frontend
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    ignore:
+      # Major upgrades can break things; they're done deliberately, not automatically.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /deploy
     schedule: { interval: weekly }
+    ignore:
+      # Python and Node version changes (e.g. 3.12 to 3.14) are done deliberately:
+      # the package fingerprints are recorded for one Python version.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    ignore:
+      # Major upgrades can break things; they're done deliberately, not automatically.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
