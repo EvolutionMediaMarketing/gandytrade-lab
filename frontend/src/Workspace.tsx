@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
+import MarketPicker from "./MarketPicker";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
@@ -9,14 +10,6 @@ const STYLE_LABELS: Record<string, string> = {
   line: "Line",
   area: "Area",
   heikin_ashi: "Heikin Ashi",
-};
-
-const CLASS_LABELS: Record<string, string> = {
-  forex: "Forex",
-  metal: "Metals",
-  commodity: "Commodities",
-  stock: "US stocks",
-  etf: "US ETFs",
 };
 
 interface Prefs {
@@ -148,12 +141,6 @@ export default function Workspace({ username, onSignedOut }: { username: string;
     };
   }, [prefs.autoRefresh, prefs.timeframe, load]);
 
-  const grouped = useMemo(() => {
-    const groups: Record<string, Catalogue["symbols"]> = {};
-    for (const s of catalogue?.symbols ?? []) (groups[s.asset_class] ??= []).push(s);
-    return groups;
-  }, [catalogue]);
-
   const update = (patch: Partial<Prefs>) => setPrefs((p) => ({ ...p, ...patch }));
 
   function toggleIndicator(def: IndicatorDef) {
@@ -198,20 +185,14 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       </header>
 
       <div className="toolbar" role="toolbar" aria-label="Chart settings">
-        <label className="field">
-          <span>Market</span>
-          <select value={prefs.symbol} onChange={(e) => update({ symbol: e.target.value })}>
-            {Object.entries(grouped).map(([cls, syms]) => (
-              <optgroup key={cls} label={CLASS_LABELS[cls] ?? cls}>
-                {syms.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.code.replace("_", "/")} · {s.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+        <MarketPicker
+          value={prefs.symbol}
+          current={data?.symbol.code === prefs.symbol ? data.symbol : catalogue?.symbols.find((x) => x.code === prefs.symbol)}
+          popular={catalogue?.symbols ?? []}
+          counts={catalogue?.marketCounts ?? {}}
+          onChange={(sym) => update({ symbol: sym.code })}
+          onAuthError={handleAuth}
+        />
 
         <div className="segmented" role="group" aria-label="Timeframe">
           {(catalogue?.timeframes ?? []).map((t) => (

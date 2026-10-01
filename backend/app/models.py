@@ -53,6 +53,21 @@ class SecurityEvent(Base):
     detail: Mapped[str] = mapped_column(String(255), default="")
 
 
+class Instrument(Base):
+    """Every market the free data feeds offer, refreshed weekly from each provider's list."""
+
+    __tablename__ = "instruments"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)  # our code, e.g. EUR_USD or AAPL
+    name: Mapped[str] = mapped_column(String(160))
+    asset_class: Mapped[str] = mapped_column(String(16), index=True)  # forex|metal|commodity|index|bond|stock|etf
+    provider: Mapped[str] = mapped_column(String(16), index=True)  # oanda|twelvedata
+    provider_symbol: Mapped[str] = mapped_column(String(32))
+    precision: Mapped[int] = mapped_column(Integer, default=2)
+    exchange: Mapped[str] = mapped_column(String(32), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class PriceBar(Base):
     """Cached price history, so data is only downloaded once."""
 

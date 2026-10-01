@@ -2,7 +2,7 @@
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,8 @@ from ..deps import current_user
 from ..indicators.chart import build_chart, catalogue_json
 from ..market.providers.base import ProviderError
 from ..market.service import get_bars
-from ..market.symbols import SYMBOLS, get_symbol
+from ..market import directory
+from ..market.symbols import SYMBOLS
 from ..market.timeframes import TIMEFRAMES, get_timeframe
 from ..models import User
 
@@ -21,11 +22,17 @@ router = APIRouter(prefix="/api", tags=["market"])
 STYLES = ["candles", "bars", "line", "area", "heikin_ashi"]
 
 
+ASSET_CLASSES = ["forex", "metal", "commodity", "index", "bond", "stock", "etf"]
+
+
 @router.get("/catalogue")
-def catalogue(_: User = Depends(current_user)) -> dict:
+def catalogue(db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
     settings = get_settings()
+    directory.refresh_in_background()  # weekly; does nothing if the list is fresh
     return {
+        # A hand-picked shortlist shown before you search; everything else is found with search.
         "symbols": [s.to_dict() for s in SYMBOLS.values()],
+        "marketCounts": directory.counts(db),
         "timeframes": [{"code": t.code, "label": t.label, "intraday": t.intraday} for t in TIMEFRAMES.values()],
         "styles": STYLES,
         "indicators": catalogue_json(),
@@ -36,6 +43,18 @@ def catalogue(_: User = Depends(current_user)) -> dict:
     }
 
 
+@router.get("/markets/search")
+def search_markets(
+    q: str = Query("", max_length=40),
+    asset_class: str = Query("", alias="class", max_length=16),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_session),
+    _: User = Depends(current_user),
+) -> dict:
+    cls = asset_class if asset_class in ASSET_CLASSES else ""
+    return {"results": directory.search(db, q, cls, limit)}
+
+
 class IndicatorRequest(BaseModel):
     id: str = Field(max_length=40)
     type: str = Field(max_length=20)
@@ -43,7 +62,7 @@ class IndicatorRequest(BaseModel):
 
 
 class ChartRequest(BaseModel):
-    symbol: str
+    symbol: str = Field(max_length=32)
     timeframe: str = "1d"
     style: str = "candles"
     limit: int = 1000
@@ -53,7 +72,7 @@ class ChartRequest(BaseModel):
 @router.post("/chart")
 def chart(body: ChartRequest, db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
     try:
-        symbol = get_symbol(body.symbol)
+        symbol = directory.lookup(db, body.symbol)
         tf = get_timeframe(body.timeframe)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

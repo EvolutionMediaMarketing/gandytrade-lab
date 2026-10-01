@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 class Symbol:
     code: str  # our code, also used in URLs
     name: str
-    asset_class: str  # forex | metal | commodity | stock | etf
+    asset_class: str  # forex | metal | commodity | index | bond | stock | etf
     provider: str  # oanda | twelvedata
     provider_symbol: str
     precision: int  # decimal places to show

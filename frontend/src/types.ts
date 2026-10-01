@@ -1,7 +1,7 @@
 export interface SymbolInfo {
   code: string;
   name: string;
-  asset_class: "forex" | "metal" | "commodity" | "stock" | "etf";
+  asset_class: "forex" | "metal" | "commodity" | "index" | "bond" | "stock" | "etf";
   provider: "oanda" | "twelvedata";
   provider_symbol: string;
   precision: number;
@@ -37,6 +37,7 @@ export interface Catalogue {
   styles: string[];
   indicators: IndicatorDef[];
   dataSources: { oanda: boolean; twelvedata: boolean };
+  marketCounts: Record<string, number>;
 }
 
 export interface ActiveIndicator {

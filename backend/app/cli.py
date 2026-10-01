@@ -6,6 +6,7 @@
     python -m app.cli unlock           clear a sign-in lockout
     python -m app.cli sign-out-everywhere   end every signed-in session now
     python -m app.cli audit            show recent sign-ins and security events
+    python -m app.cli refresh-markets  download the full market lists now
 """
 
 import argparse
@@ -66,6 +67,7 @@ def main(argv: list[str] | None = None) -> None:
     for name in ("reset-2fa", "set-password", "unlock", "sign-out-everywhere"):
         p = sub.add_parser(name)
         p.add_argument("--username", default=None)
+    sub.add_parser("refresh-markets")
     audit = sub.add_parser("audit")
     audit.add_argument("--limit", type=int, default=50)
     args = parser.parse_args(argv)
@@ -116,6 +118,16 @@ def main(argv: list[str] | None = None) -> None:
             sessions.audit(session, "signed_out_everywhere", user.username, "server", f"{ended} session(s)")
             session.commit()
             print(f"Signed out {ended} session(s).")
+        elif args.command == "refresh-markets":
+            from .market import directory
+
+            result = directory.refresh(session, force=True)
+            if not result:
+                print("No data keys set, so there's no market list to download.")
+            for provider, outcome in result.items():
+                print(f"{provider}: {outcome} markets" if isinstance(outcome, int) else f"{provider}: {outcome}")
+            for cls, n in sorted(directory.counts(session).items()):
+                print(f"  {cls:<10} {n}")
         elif args.command == "audit":
             rows = session.scalars(
                 select(SecurityEvent).order_by(SecurityEvent.at.desc()).limit(max(1, min(args.limit, 1000)))

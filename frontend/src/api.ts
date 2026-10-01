@@ -1,4 +1,4 @@
-import type { ActiveIndicator, Catalogue, ChartData } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, SymbolInfo } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -36,6 +36,11 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   catalogue: () => request<Catalogue>("/api/catalogue"),
+  searchMarkets: (q: string, assetClass: string, signal?: AbortSignal) =>
+    request<{ results: SymbolInfo[] }>(
+      `/api/markets/search?${new URLSearchParams({ q, class: assetClass, limit: "60" })}`,
+      { signal },
+    ),
   chart: (symbol: string, timeframe: string, style: string, indicators: ActiveIndicator[], background = false) =>
     request<ChartData>(
       "/api/chart",
