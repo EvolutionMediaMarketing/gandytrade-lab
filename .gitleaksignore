@@ -1,0 +1,3 @@
+# Reviewed false positives (not secrets).
+# MarketPicker: browser storage slot name for recent markets.
+cce387adfb4c5aed9aac0b1c93e2d610c2fac3bc:frontend/src/MarketPicker.tsx:generic-api-key:15

@@ -12,12 +12,12 @@ export const CLASS_LABELS: Record<string, string> = {
   etf: "US ETFs",
 };
 const CLASS_ORDER = ["forex", "metal", "commodity", "index", "bond", "stock", "etf"];
-const RECENT_KEY = "gt.recentMarkets.v1";
+const RECENT_STORAGE_SLOT = "gt.recentMarkets.v1";
 const MAX_RECENT = 8;
 
 function loadRecent(): SymbolInfo[] {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
+    const raw = localStorage.getItem(RECENT_STORAGE_SLOT);
     return raw ? (JSON.parse(raw) as SymbolInfo[]).slice(0, MAX_RECENT) : [];
   } catch {
     return [];
@@ -26,7 +26,7 @@ function loadRecent(): SymbolInfo[] {
 
 function saveRecent(list: SymbolInfo[]) {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, MAX_RECENT)));
+    localStorage.setItem(RECENT_STORAGE_SLOT, JSON.stringify(list.slice(0, MAX_RECENT)));
   } catch {
     /* storage unavailable */
   }
