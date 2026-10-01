@@ -36,12 +36,22 @@ def get_timeframe(code: str) -> Timeframe:
         raise ValueError(f"Unknown timeframe '{code}'.") from exc
 
 
-def refresh_after_seconds(tf: Timeframe) -> int:
-    """How long cached bars stay fresh before asking the provider again."""
-    if tf.seconds <= 300:
-        return 60
-    if tf.seconds <= 3600:
-        return 300
-    if tf.intraday:
-        return 900
-    return 3600
+def refresh_after_seconds(tf: Timeframe, provider: str = "oanda") -> int:
+    """How long cached bars stay fresh before asking the provider again.
+
+    Short timeframes refresh quickly so charts keep up. Twelve Data's free plan
+    allows 8 requests a minute, so its data is never refreshed more than once a minute.
+    """
+    if tf.seconds <= 60:
+        seconds = 10
+    elif tf.seconds <= 300:
+        seconds = 30
+    elif tf.seconds <= 3600:
+        seconds = 120
+    elif tf.intraday:
+        seconds = 600
+    else:
+        seconds = 1800
+    if provider == "twelvedata":
+        seconds = max(seconds, 60)
+    return seconds

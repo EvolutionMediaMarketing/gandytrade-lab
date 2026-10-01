@@ -12,6 +12,7 @@ import {
   LineStyle,
   SeriesType,
   Time,
+  TickMarkType,
   createChart,
 } from "lightweight-charts";
 import { BandFill } from "./BandFill";
@@ -60,9 +61,36 @@ function fmt(v: number | undefined, precision: number) {
   return v === undefined ? "–" : v.toFixed(precision);
 }
 
+// Show times in the viewer's own time zone (UK time for you), not UTC.
+function tickLabel(seconds: number, type: TickMarkType): string {
+  const d = new Date(seconds * 1000);
+  switch (type) {
+    case TickMarkType.Year:
+      return d.toLocaleDateString("en-GB", { year: "numeric" });
+    case TickMarkType.Month:
+      return d.toLocaleDateString("en-GB", { month: "short" });
+    case TickMarkType.DayOfMonth:
+      return d.toLocaleDateString("en-GB", { day: "numeric" });
+    case TickMarkType.TimeWithSeconds:
+      return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    default:
+      return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  }
+}
+
+function crosshairLabel(seconds: number, timeframe: string): string {
+  const d = new Date(seconds * 1000);
+  const intraday = timeframe.endsWith("m") || timeframe.endsWith("h");
+  return intraday
+    ? d.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
 export default function ChartView({ data }: { data: ChartData }) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  // Remembers where you'd scrolled and zoomed, so an automatic refresh doesn't reset the view.
+  const viewRef = useRef<{ key: string; fromEnd: number; toEnd: number } | null>(null);
   const [legend, setLegend] = useState<BarData | null>(null);
 
   useEffect(() => {
@@ -80,8 +108,13 @@ export default function ChartView({ data }: { data: ChartData }) {
       grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: C.grid },
-      timeScale: { borderColor: C.grid, timeVisible: data.timeframe.endsWith("m") || data.timeframe.endsWith("h"), rightOffset: 4 },
-      localization: { locale: "en-GB" },
+      timeScale: {
+        borderColor: C.grid,
+        timeVisible: data.timeframe.endsWith("m") || data.timeframe.endsWith("h"),
+        rightOffset: 4,
+        tickMarkFormatter: (time: Time, type: TickMarkType) => tickLabel(time as number, type),
+      },
+      localization: { locale: "en-GB", timeFormatter: (time: Time) => crosshairLabel(time as number, data.timeframe) },
     });
     chartRef.current = chart;
 
@@ -199,11 +232,18 @@ export default function ChartView({ data }: { data: ChartData }) {
       pane.setStretchFactor(i === 0 ? 1 : kind === "volume" ? VOLUME_PANE_SHARE : SUB_PANE_SHARE);
     });
 
-    // Show the most recent part of the history by default.
+    // Same market, timeframe and style as before: keep the view, measured from the
+    // latest bar so new bars stay in sight. Otherwise show the most recent history.
     const n = data.bars.length;
+    const viewKey = `${data.symbol.code}|${data.timeframe}|${data.style}`;
+    const saved = viewRef.current;
     if (n > 0) {
-      const from = Math.max(0, n - 160);
-      chart.timeScale().setVisibleLogicalRange({ from, to: n + Math.min(8, data.futureTimes.length) });
+      if (saved && saved.key === viewKey) {
+        chart.timeScale().setVisibleLogicalRange({ from: n - saved.fromEnd, to: n - saved.toEnd });
+      } else {
+        const from = Math.max(0, n - 160);
+        chart.timeScale().setVisibleLogicalRange({ from, to: n + Math.min(8, data.futureTimes.length) });
+      }
     }
 
     // Legend follows the crosshair; otherwise shows the latest bar.
@@ -215,6 +255,8 @@ export default function ChartView({ data }: { data: ChartData }) {
     });
 
     return () => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (range && n > 0) viewRef.current = { key: viewKey, fromEnd: n - range.from, toEnd: n - range.to };
       chart.remove();
       chartRef.current = null;
     };

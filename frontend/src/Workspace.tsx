@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef } from "./types";
@@ -24,7 +24,13 @@ interface Prefs {
   timeframe: string;
   style: string;
   indicators: ActiveIndicator[];
+  autoRefresh: boolean;
 }
+
+// How often the chart refreshes itself, by timeframe (seconds).
+const REFRESH_SECONDS: Record<string, number> = {
+  "1m": 15, "5m": 30, "15m": 60, "30m": 60, "1h": 120, "4h": 300, "1d": 900, "1w": 1800, "1M": 3600,
+};
 
 const PREFS_KEY = "gt.workspace.v1";
 const DEFAULT_PREFS: Prefs = {
@@ -35,6 +41,7 @@ const DEFAULT_PREFS: Prefs = {
     { id: "ema-1", type: "ema", params: { length: 50 } },
     { id: "volume-1", type: "volume", params: {} },
   ],
+  autoRefresh: true,
 };
 
 function loadPrefs(): Prefs {
@@ -66,6 +73,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const inFlight = useRef(false);
 
   const handleAuth = useCallback(
     (err: unknown) => {
@@ -79,20 +88,50 @@ export default function Workspace({ username, onSignedOut }: { username: string;
     api.catalogue().then(setCatalogue).catch(handleAuth);
   }, [handleAuth]);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    api
-      .chart(prefs.symbol, prefs.timeframe, prefs.style, prefs.indicators)
-      .then(setData)
-      .catch(handleAuth)
-      .finally(() => setLoading(false));
-  }, [prefs, handleAuth]);
+  // `quiet` refreshes keep the current chart on screen and skip overlapping requests.
+  const load = useCallback(
+    (quiet = false) => {
+      if (quiet && inFlight.current) return;
+      inFlight.current = true;
+      if (!quiet) setLoading(true);
+      api
+        .chart(prefs.symbol, prefs.timeframe, prefs.style, prefs.indicators)
+        .then((d) => {
+          setData(d);
+          setError(null);
+          setUpdatedAt(new Date());
+        })
+        .catch(handleAuth)
+        .finally(() => {
+          inFlight.current = false;
+          setLoading(false);
+        });
+    },
+    [prefs.symbol, prefs.timeframe, prefs.style, prefs.indicators, handleAuth],
+  );
 
   useEffect(() => {
     savePrefs(prefs);
+  }, [prefs]);
+
+  useEffect(() => {
     load();
-  }, [prefs, load]);
+  }, [load]);
+
+  // Automatic refresh, paused while the tab is hidden to save the free data allowance.
+  useEffect(() => {
+    if (!prefs.autoRefresh) return;
+    const seconds = REFRESH_SECONDS[prefs.timeframe] ?? 60;
+    const tick = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    const timer = window.setInterval(tick, seconds * 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [prefs.autoRefresh, prefs.timeframe, load]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, Catalogue["symbols"]> = {};
@@ -181,10 +220,19 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           aria-expanded={panelOpen}>
           Indicators ({prefs.indicators.length})
         </button>
-        <button className="ghost" onClick={load} disabled={loading} title="Fetch the latest prices">
+        <button className="ghost" onClick={() => load()} disabled={loading} title="Fetch the latest prices now">
           {loading ? "Loading…" : "Refresh"}
         </button>
+        <label className="auto-refresh" title={`Updates every ${REFRESH_SECONDS[prefs.timeframe] ?? 60} seconds on this timeframe`}>
+          <input type="checkbox" checked={prefs.autoRefresh} onChange={(e) => update({ autoRefresh: e.target.checked })} />
+          Auto-refresh
+        </label>
         {sourceLabel && <span className={data?.sample ? "source sample" : "source"}>{sourceLabel}</span>}
+        {updatedAt && (
+          <span className="updated muted">
+            Updated {updatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </span>
+        )}
       </div>
 
       {data?.warnings.map((w) => (

@@ -107,7 +107,7 @@ def get_bars(db: Session, symbol: Symbol, tf: Timeframe, limit: int = 1000) -> B
     fetched_at = state.fetched_at if state else None
     if fetched_at is not None and fetched_at.tzinfo is None:
         fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-    fresh = fetched_at is not None and (now - fetched_at).total_seconds() < refresh_after_seconds(tf)
+    fresh = fetched_at is not None and (now - fetched_at).total_seconds() < refresh_after_seconds(tf, symbol.provider)
 
     result = BarsResult(bars=[], source=symbol.provider)
     if not fresh:

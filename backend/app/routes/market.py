@@ -1,5 +1,7 @@
 """Symbols, timeframes, indicator catalogue and chart data."""
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -72,6 +74,7 @@ def chart(body: ChartRequest, db: Session = Depends(get_session), _: User = Depe
             "sample": result.sample,
             "stale": result.stale,
             "warnings": result.warnings,
+            "fetchedAt": int(time.time()),
         }
     )
     return data
