@@ -12,6 +12,17 @@ RewriteRule ^/(.*)$ https://__DOMAIN__/$1 [R=301,L]
 ProxyRequests Off
 ProxyPreserveHost On
 ProxyPass /.well-known !
+
+# cPanel's error pages (e.g. /401.shtml) must not be sent to the app, or a refused
+# password shows the app's page instead of the browser's password prompt.
+ErrorDocument 400 default
+ErrorDocument 401 default
+ErrorDocument 403 default
+ErrorDocument 404 default
+ErrorDocument 500 default
+ErrorDocument 502 default
+ErrorDocument 503 default
+
 ProxyPass / http://127.0.0.1:__PORT__/ timeout=60
 ProxyPassReverse / http://127.0.0.1:__PORT__/
 RequestHeader set X-Forwarded-Proto "https"
