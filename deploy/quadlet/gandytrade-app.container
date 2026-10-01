@@ -11,6 +11,13 @@ ContainerName=gandytrade-app
 Network=gandytrade.network
 PublishPort=127.0.0.1:__PORT__:8000
 EnvironmentFile=__CONF__/app.env
+# Locked down: read-only files, no Linux capabilities, no privilege gain.
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+# CPU, memory and process caps (only the ones this server supports are filled in),
+# so a runaway calculation can't slow down other sites on the server.
+__APP_LIMITS__
 
 [Service]
 Restart=always

@@ -4,6 +4,8 @@
     python -m app.cli reset-2fa        new two-factor secret (e.g. new phone)
     python -m app.cli set-password     change your password
     python -m app.cli unlock           clear a sign-in lockout
+    python -m app.cli sign-out-everywhere   end every signed-in session now
+    python -m app.cli audit            show recent sign-ins and security events
 """
 
 import argparse
@@ -14,8 +16,9 @@ import sys
 import qrcode
 from sqlalchemy import func, select
 
+from . import sessions
 from .db import init_db, new_session, wait_for_database
-from .models import User
+from .models import SecurityEvent, User
 from .security import hash_password, new_totp_secret, provisioning_uri
 
 
@@ -60,9 +63,11 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-user")
     create.add_argument("--username", default=None)
-    for name in ("reset-2fa", "set-password", "unlock"):
+    for name in ("reset-2fa", "set-password", "unlock", "sign-out-everywhere"):
         p = sub.add_parser(name)
         p.add_argument("--username", default=None)
+    audit = sub.add_parser("audit")
+    audit.add_argument("--limit", type=int, default=50)
     args = parser.parse_args(argv)
 
     wait_for_database()
@@ -78,6 +83,7 @@ def main(argv: list[str] | None = None) -> None:
             password_hash = _ask_password()
             secret = new_totp_secret()
             session.add(User(username=username, password_hash=password_hash, totp_secret=secret))
+            sessions.audit(session, "user_created", username, "server")
             session.commit()
             _show_totp(username, secret)
             print("User created. Sign in at https://gandytrade.co.uk")
@@ -85,20 +91,40 @@ def main(argv: list[str] | None = None) -> None:
             user = _get_user(session, args.username)
             user.totp_secret = new_totp_secret()
             user.totp_last_step = 0
+            ended = sessions.end_all(session, user.id)
+            sessions.audit(session, "2fa_reset", user.username, "server", f"{ended} session(s) signed out")
             session.commit()
             _show_totp(user.username, user.totp_secret)
             print("Two-factor reset. Remove the old entry from your authenticator app.")
         elif args.command == "set-password":
             user = _get_user(session, args.username)
             user.password_hash = _ask_password()
+            ended = sessions.end_all(session, user.id)
+            sessions.audit(session, "password_changed", user.username, "server", f"{ended} session(s) signed out")
             session.commit()
-            print("Password changed.")
+            print("Password changed. Every browser has been signed out.")
         elif args.command == "unlock":
             user = _get_user(session, args.username)
             user.failed_logins = 0
             user.locked_until = None
+            sessions.audit(session, "unlocked", user.username, "server")
             session.commit()
             print("Sign-in unlocked.")
+        elif args.command == "sign-out-everywhere":
+            user = _get_user(session, args.username)
+            ended = sessions.end_all(session, user.id)
+            sessions.audit(session, "signed_out_everywhere", user.username, "server", f"{ended} session(s)")
+            session.commit()
+            print(f"Signed out {ended} session(s).")
+        elif args.command == "audit":
+            rows = session.scalars(
+                select(SecurityEvent).order_by(SecurityEvent.at.desc()).limit(max(1, min(args.limit, 1000)))
+            ).all()
+            if not rows:
+                print("No security events yet.")
+            for e in reversed(rows):
+                when = e.at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                print(f"{when}  {e.event:<22} {e.username:<16} {e.ip:<16} {e.detail}")
     finally:
         session.close()
 

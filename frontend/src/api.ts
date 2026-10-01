@@ -6,8 +6,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Background requests (automatic refreshes) don't count as you being active, so an
+// unattended tab still signs out after the idle timeout.
+async function request<T>(path: string, init: RequestInit = {}, background = false): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
+  if (background) headers["X-GT-Background"] = "1";
   if (init.body) headers["Content-Type"] = "application/json";
   if (init.method && init.method !== "GET") headers["X-Requested-With"] = "gandytrade";
   const res = await fetch(path, { credentials: "same-origin", ...init, headers });
@@ -33,9 +36,10 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   catalogue: () => request<Catalogue>("/api/catalogue"),
-  chart: (symbol: string, timeframe: string, style: string, indicators: ActiveIndicator[]) =>
-    request<ChartData>("/api/chart", {
-      method: "POST",
-      body: JSON.stringify({ symbol, timeframe, style, limit: 1000, indicators }),
-    }),
+  chart: (symbol: string, timeframe: string, style: string, indicators: ActiveIndicator[], background = false) =>
+    request<ChartData>(
+      "/api/chart",
+      { method: "POST", body: JSON.stringify({ symbol, timeframe, style, limit: 1000, indicators }) },
+      background,
+    ),
 };

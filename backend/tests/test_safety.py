@@ -48,3 +48,21 @@ def test_no_order_code_outside_live_gateway():
 def test_data_feed_is_fixed_to_practice_host():
     assert oanda.PRACTICE_HOST == "https://api-fxpractice.oanda.com"
     assert oanda.CANDLES_PATH.endswith("/candles")
+
+
+def test_outbound_calls_only_through_the_allowlisted_client():
+    """Every internet request must use safe_client(), which only reaches the two data hosts."""
+    app_dir = REPO / "backend" / "app"
+    allowed = {app_dir / "market" / "providers" / "http.py"}
+    pattern = re.compile(
+        r"httpx\.(Client|AsyncClient|get|post|put|delete|request|stream)\s*\("
+        r"|^\s*(import|from)\s+(requests|urllib\.request|urllib3|aiohttp|http\.client|socket)\b"
+    )
+    offenders = []
+    for path in app_dir.rglob("*.py"):
+        if path in allowed or ALLOWED_DIR in path.parents:
+            continue
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if pattern.search(line):
+                offenders.append(f"{path.relative_to(REPO)}:{n}: {line.strip()}")
+    assert not offenders, "Outbound HTTP outside safe_client():\n" + "\n".join(offenders)

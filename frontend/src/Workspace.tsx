@@ -75,6 +75,19 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [panelOpen, setPanelOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const inFlight = useRef(false);
+  // When you last touched the page, and when we last asked the server for data. An automatic
+  // refresh only counts as activity if you've used the mouse, keyboard or screen since then.
+  const lastInput = useRef(Date.now());
+  const lastRequest = useRef(0);
+
+  useEffect(() => {
+    const mark = () => {
+      lastInput.current = Date.now();
+    };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, mark, { passive: true }));
+    return () => events.forEach((e) => window.removeEventListener(e, mark));
+  }, []);
 
   const handleAuth = useCallback(
     (err: unknown) => {
@@ -94,8 +107,10 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       if (quiet && inFlight.current) return;
       inFlight.current = true;
       if (!quiet) setLoading(true);
+      const background = quiet && lastInput.current <= lastRequest.current;
+      lastRequest.current = Date.now();
       api
-        .chart(prefs.symbol, prefs.timeframe, prefs.style, prefs.indicators)
+        .chart(prefs.symbol, prefs.timeframe, prefs.style, prefs.indicators, background)
         .then((d) => {
           setData(d);
           setError(null);

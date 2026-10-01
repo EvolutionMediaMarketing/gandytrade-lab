@@ -110,6 +110,22 @@ bash deploy/scripts/as-app-user.sh deploy/scripts/update.sh
 | New phone / reset two-factor | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli reset-2fa` |
 | Change app password | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli set-password` |
 | Change gate password | `htpasswd -B /etc/gandytrade/htpasswd <gate-username>` |
+| Sign out every browser now (lost laptop or phone) | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli sign-out-everywhere` |
+| Who signed in, failed attempts, changes | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli audit` |
+
+## Security settings in place
+
+- **Password gate, then app sign-in with two-factor.** Two separate passwords.
+- **Only Apache can talk to the app.** Apache adds a secret to every request (kept in `/etc/gandytrade/proxy-secret.conf`, readable by root only). Anything else on the server that connects to port 8601 directly gets "Forbidden". Re-running `04-apache.sh` keeps the same secret; delete that file first to make a new one.
+- **Sessions end on their own:** after 30 minutes without you using the page, or 12 hours in total. Changing your password or two-factor signs out every browser.
+- **HTTPS remembered** by your browser for a year (HSTS).
+- **Locked-down containers:** read-only files, no Linux capabilities, CPU, memory and process caps where the server allows them.
+- **Outbound allowlist:** the app can only contact the OANDA practice feed and Twelve Data, over HTTPS.
+- **No keys in logs:** keys travel in headers and log lines are scrubbed.
+- **Checked packages:** every Python package is verified against a recorded hash; GitHub scans every push for leaked keys.
+
+If the "Only Apache" check ever blocks you by mistake, remove the `GT_PROXY_SECRET=` line from
+`/home/gandytradeco/gandytrade/app.env` and restart the app; the password gate still protects the site.
 
 ## Undo
 

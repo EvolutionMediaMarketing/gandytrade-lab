@@ -27,6 +27,15 @@ ProxyPass / http://127.0.0.1:__PORT__/ timeout=60
 ProxyPassReverse / http://127.0.0.1:__PORT__/
 RequestHeader set X-Forwarded-Proto "https"
 
+# Proves to the app that a request came through this gate. The secret lives in a
+# root-only file (other accounts on the server can't read it), so a program that
+# connects to the app's port directly is refused. "set" replaces any value a
+# visitor tries to send themselves.
+Include __PROXY_SECRET_CONF__
+
+# Browsers remember to use HTTPS only for this site for a year.
+Header always set Strict-Transport-Security "max-age=31536000"
+
 # Keep the site out of search engines.
 Header always set X-Robots-Tag "noindex, nofollow, noarchive"
 

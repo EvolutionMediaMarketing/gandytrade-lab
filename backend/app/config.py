@@ -13,7 +13,14 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     # Cookies are HTTPS-only in production. Set GT_COOKIE_SECURE=false only for local testing.
     cookie_secure: bool = True
+    # A session ends after this long in total, or after this long with no activity from you
+    # (automatic chart refreshes don't count as activity).
     session_hours: int = 12
+    session_idle_minutes: int = 30
+
+    # Shared secret that Apache adds to every request it passes on. When set, any request
+    # without it (e.g. another program on the server calling the port directly) is refused.
+    proxy_secret: str = ""
 
     # Sign-in protection
     max_failed_logins: int = 5

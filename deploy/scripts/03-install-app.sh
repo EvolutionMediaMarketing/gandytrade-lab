@@ -41,9 +41,25 @@ echo "Building the app image..."
 podman build -t localhost/gandytrade-app:latest -f "$REPO/deploy/Containerfile" "$REPO"
 ok "App image built"
 
-# 3. Install the service definitions and start everything.
+# 3. Resource caps, using only the controls this server hands to the app user
+#    (asking for one that isn't available would stop the containers starting).
+uid=$(id -u)
+controllers=$(cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.controllers" 2>/dev/null || true)
+limits() {  # $1 memory, $2 cpus, $3 max processes
+  local args=""
+  [[ " $controllers " == *" memory "* ]] && args+=" --memory=$1"
+  [[ " $controllers " == *" cpu "* ]] && args+=" --cpus=$2"
+  [[ " $controllers " == *" pids "* ]] && args+=" --pids-limit=$3"
+  [ -n "$args" ] && echo "PodmanArgs=${args# }" || echo "# (this server doesn't delegate resource controls to $APP_USER)"
+}
+APP_LIMITS=$(limits 1g 1.0 256)
+DB_LIMITS=$(limits 512m 1.0 200)
+ok "Resource caps: ${controllers:-none available}"
+
+# 4. Install the service definitions and start everything.
 for f in "$REPO"/deploy/quadlet/*; do
-  sed -e "s#__CONF__#$CONF#g" -e "s#__PORT__#$APP_PORT#g" "$f" > "$UNITS/$(basename "$f")"
+  sed -e "s#__CONF__#$CONF#g" -e "s#__PORT__#$APP_PORT#g" \
+      -e "s#__APP_LIMITS__#$APP_LIMITS#g" -e "s#__DB_LIMITS__#$DB_LIMITS#g" "$f" > "$UNITS/$(basename "$f")"
 done
 systemctl --user daemon-reload
 systemctl --user restart gandytrade-db.service

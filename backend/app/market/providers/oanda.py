@@ -12,6 +12,7 @@ import httpx
 from ..symbols import Symbol
 from ..timeframes import Timeframe
 from .base import Bar, ProviderError
+from .http import safe_client
 
 PRACTICE_HOST = "https://api-fxpractice.oanda.com"
 CANDLES_PATH = "/v3/instruments/{instrument}/candles"
@@ -36,7 +37,7 @@ def fetch_candles(
     params = {"granularity": tf.oanda, "count": min(count, 5000), "price": "M"}
     headers = {"Authorization": f"Bearer {token}", "Accept-Datetime-Format": "RFC3339"}
     own_client = client is None
-    client = client or httpx.Client(timeout=20)
+    client = client or safe_client()
     try:
         resp = client.get(url, params=params, headers=headers)
     except httpx.HTTPError as exc:

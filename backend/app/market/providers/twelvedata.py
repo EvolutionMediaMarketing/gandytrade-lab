@@ -10,6 +10,7 @@ import httpx
 from ..symbols import Symbol
 from ..timeframes import Timeframe
 from .base import Bar, ProviderError
+from .http import safe_client
 
 BASE_URL = "https://api.twelvedata.com/time_series"
 REQUESTS_PER_MINUTE = 8
@@ -57,12 +58,13 @@ def fetch_candles(
         "outputsize": min(count, 5000),
         "timezone": "UTC",
         "order": "ASC",
-        "apikey": api_key,
     }
+    # The key goes in a header, not the URL, so it can't end up in anyone's logs.
+    headers = {"Authorization": f"apikey {api_key}"}
     own_client = client is None
-    client = client or httpx.Client(timeout=20)
+    client = client or safe_client()
     try:
-        resp = client.get(BASE_URL, params=params)
+        resp = client.get(BASE_URL, params=params, headers=headers)
     except httpx.HTTPError as exc:
         raise ProviderError(f"Couldn't reach Twelve Data: {exc.__class__.__name__}.") from exc
     finally:
