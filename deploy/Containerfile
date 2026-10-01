@@ -1,7 +1,7 @@
 # Builds the GandyTrade Lab app image: the React frontend plus the Python API.
 # Build from the repository root:  podman build -t localhost/gandytrade-app:latest -f deploy/Containerfile .
 
-FROM docker.io/library/node:22-alpine AS frontend
+FROM docker.io/library/node:26-alpine AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
