@@ -1,0 +1,17 @@
+# GandyTrade Lab database. Runs as the gandytradeco user; no ports are published.
+[Unit]
+Description=GandyTrade Lab database
+
+[Container]
+Image=docker.io/library/postgres:16-alpine
+ContainerName=gandytrade-db
+Network=gandytrade.network
+Volume=gandytrade-db.volume:/var/lib/postgresql/data
+EnvironmentFile=__CONF__/db.env
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

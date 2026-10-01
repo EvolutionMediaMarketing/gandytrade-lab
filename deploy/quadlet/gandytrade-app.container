@@ -1,0 +1,20 @@
+# GandyTrade Lab web app. Listens on the server itself only (127.0.0.1);
+# Apache passes gandytrade.co.uk traffic to it behind the password gate.
+[Unit]
+Description=GandyTrade Lab app
+Requires=gandytrade-db.service
+After=gandytrade-db.service
+
+[Container]
+Image=localhost/gandytrade-app:latest
+ContainerName=gandytrade-app
+Network=gandytrade.network
+PublishPort=127.0.0.1:__PORT__:8000
+EnvironmentFile=__CONF__/app.env
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

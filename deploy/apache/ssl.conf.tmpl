@@ -1,0 +1,31 @@
+# GandyTrade Lab: applies to __DOMAIN__ only (HTTPS).
+# Installed by deploy/scripts/04-apache.sh. Remove with: 04-apache.sh --remove
+
+# www.__DOMAIN__ -> __DOMAIN__ (certificate checks left alone)
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^www\. [NC]
+RewriteCond %{REQUEST_URI} !^/\.well-known/
+RewriteRule ^/(.*)$ https://__DOMAIN__/$1 [R=301,L]
+
+# Pass the site to the app, which only listens on the server itself.
+# /.well-known stays with cPanel so AutoSSL can keep renewing the certificate.
+ProxyRequests Off
+ProxyPreserveHost On
+ProxyPass /.well-known !
+ProxyPass / http://127.0.0.1:__PORT__/ timeout=60
+ProxyPassReverse / http://127.0.0.1:__PORT__/
+RequestHeader set X-Forwarded-Proto "https"
+
+# Keep the site out of search engines.
+Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+
+# Password gate in front of everything except certificate checks.
+<Location "/">
+    AuthType Basic
+    AuthName "GandyTrade Lab (private)"
+    AuthUserFile __HTPASSWD__
+    Require valid-user
+</Location>
+<Location "/.well-known">
+    Require all granted
+</Location>

@@ -1,0 +1,6 @@
+# GandyTrade Lab: applies to __DOMAIN__ only (plain HTTP).
+# Sends every visit to HTTPS, except certificate checks.
+RewriteEngine On
+RewriteCond %{REQUEST_URI} !^/\.well-known/
+RewriteRule ^/(.*)$ https://__DOMAIN__/$1 [R=301,L]
+Header always set X-Robots-Tag "noindex, nofollow, noarchive"
