@@ -3,9 +3,10 @@ import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
 import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
-import MarketPicker from "./MarketPicker";
+import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import ResearchPage from "./ResearchPage";
+import type { ShownTrade } from "./ChartView";
 import type { TradePlan } from "./PlanZones";
 import SettingsPage from "./SettingsPage";
 import SignalPanel from "./SignalPanel";
@@ -88,6 +89,8 @@ function pageFromHash(): Page {
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [page, setPage] = useState<Page>(pageFromHash);
   const [backupOverdue, setBackupOverdue] = useState(false);
+  // An open paper trade picked on the Paper page, shown on the chart until you hide it.
+  const [shownTrade, setShownTrade] = useState<ShownTrade | null>(null);
   useEffect(() => {
     api.backupStatus(true).then((b) => setBackupOverdue(b.overdue)).catch(() => {});
   }, [page]);
@@ -301,7 +304,14 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
       )}
       {page === "paper" && (
-        <PaperPage onAuthError={handleAuth} onOpenChart={(symbol) => { update({ symbol }); go("charts"); }}
+        <PaperPage onAuthError={handleAuth}
+          onShowTrade={(t) => {
+            setShownTrade({ id: t.id, symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
+              entryTime: Math.floor(Date.parse(t.entryTime) / 1000), stop: t.stop, target: t.target });
+            const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === t.timeframe);
+            update(tfKnown ? { symbol: t.symbol, timeframe: t.timeframe } : { symbol: t.symbol });
+            go("charts");
+          }}
           catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite}
           autoPrefill={autoPrefill} onPrefillUsed={() => setAutoPrefill(null)} />
       )}
@@ -388,11 +398,21 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <div key={i.id} className="banner info" role="status">{i.note}</div>
       ))}
       {error && <div className="banner error" role="alert">{error}</div>}
+      {shownTrade && data?.symbol.code === shownTrade.symbol && (
+        <div className="banner info trade-banner" role="status">
+          Showing your paper {shownTrade.side === "long" ? "buy" : "short"} on {displayCode(shownTrade.symbol)}:
+          entry {shownTrade.entryPrice.toFixed(data.symbol.precision)}, stop-loss {shownTrade.stop.toFixed(data.symbol.precision)}
+          {shownTrade.target !== null ? `, target ${shownTrade.target.toFixed(data.symbol.precision)}` : ", no target"}.{" "}
+          <button type="button" className="link-button" onClick={() => go("paper")}>Back to Paper</button>{" · "}
+          <button type="button" className="link-button" onClick={() => setShownTrade(null)}>Hide</button>
+        </div>
+      )}
 
       <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? (
-            <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan} />
+            <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan}
+              trade={shownTrade && data.symbol.code === shownTrade.symbol ? shownTrade : null} />
           ) : !error && <div className="splash">Loading chart…</div>}
         </section>
 

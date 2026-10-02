@@ -17,7 +17,7 @@ const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
 interface Props {
   onAuthError: (err: unknown) => void;
-  onOpenChart: (symbol: string) => void;
+  onShowTrade: (t: PaperTrade) => void;
   catalogue: Catalogue | null;
   favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
@@ -25,7 +25,7 @@ interface Props {
   onPrefillUsed: () => void;
 }
 
-export default function PaperPage({ onAuthError, onOpenChart, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed }: Props) {
+export default function PaperPage({ onAuthError, onShowTrade, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed }: Props) {
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<PaperAccount | null>(null);
@@ -152,15 +152,16 @@ export default function PaperPage({ onAuthError, onOpenChart, catalogue, favouri
             </div>
 
             <div className="card">
-              <h3>Open trades <span className="muted small">(prices update every 30 seconds; the worker closes trades at their stop-loss or target)</span></h3>
+              <h3>Open trades <span className="muted small">(click a trade to see it on the chart; prices update every 30 seconds, and the worker closes trades at their stop-loss or target)</span></h3>
               {!detail.open?.length ? <p className="muted">No open trades. Use <b>Plan a trade</b> on the Charts page, or start an automatic run below.</p> : (
                 <div className="table-wrap">
                   <table className="trades">
                     <thead><tr><th>Market</th><th>Side</th><th>Opened</th><th>Entry</th><th>Now</th><th>Stop-loss</th><th>Target</th><th className="num">Profit</th><th></th></tr></thead>
                     <tbody>
                       {detail.open.map(withLive).map((t) => (
-                        <tr key={t.id}>
-                          <td><button type="button" className="link-button" onClick={() => onOpenChart(t.symbol)}>{displayCode(t.symbol)}</button></td>
+                        <tr key={t.id} className="clickable" title="Show this trade on the chart"
+                          onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, a")) onShowTrade(t); }}>
+                          <td><button type="button" className="link-button" onClick={() => onShowTrade(t)}>{displayCode(t.symbol)}</button></td>
                           <td>{t.side === "long" ? "Buy" : "Short"}{t.source === "auto" && <span className="tag auto" title="Opened by an automatic run">Auto</span>}</td>
                           <td>{when(t.entryTime)}</td>
                           <td className="mono">{fmt(t.entryPrice, t.precision)}</td>

@@ -108,9 +108,21 @@ interface ChartViewProps {
   /** A trade plan drawn as draggable lines. */
   plan?: TradePlan | null;
   onPlanChange?: (plan: TradePlan) => void;
+  /** An open paper trade to show: its entry, stop-loss and target (not draggable). */
+  trade?: ShownTrade | null;
 }
 
-export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange }: ChartViewProps) {
+export interface ShownTrade {
+  id: number;
+  symbol: string;
+  side: "long" | "short";
+  entryPrice: number;
+  entryTime: number; // Unix seconds
+  stop: number;
+  target: number | null;
+}
+
+export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade }: ChartViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const mainRef = useRef<ISeriesApi<SeriesType> | null>(null);
@@ -121,6 +133,9 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
   const onPlanChangeRef = useRef(onPlanChange);
   planRef.current = plan;
   onPlanChangeRef.current = onPlanChange;
+  const tradeRef = useRef<ShownTrade | null | undefined>(trade);
+  tradeRef.current = trade;
+  const framedTradeRef = useRef<number | null>(null);  // the trade the view was last moved to
 
   // Draw (or remove) the plan's lines and shading on the current chart.
   const syncPlan = useCallback(() => {
@@ -144,8 +159,14 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
       });
     });
     // Shade the plan over the last 40 candles and on to the right edge, so it's easy to see.
+    // With no plan, an open trade being shown is shaded instead, from the candle it was opened in.
     const n = data.bars.length;
-    zones.setPlan(p ?? null, n ? data.bars[Math.max(0, n - 40)].time : null);
+    const t = tradeRef.current;
+    if (!p && t) {
+      zones.setPlan({ entry: t.entryPrice, stop: t.stop, target: t.target }, entryBar(data.bars, t.entryTime)?.time ?? null);
+    } else {
+      zones.setPlan(p ?? null, n ? data.bars[Math.max(0, n - 40)].time : null);
+    }
   }, [data]);
 
   useEffect(() => {
@@ -240,10 +261,26 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     zonesRef.current = zones;
     linesRef.current = {};
 
-    // Trade markers from a backtest (buy, sell, exit), sorted by time as the library requires.
-    if (markers && markers.length) {
+    // An open paper trade: fixed lines for its entry, stop-loss and target, and an arrow on its entry candle.
+    const allMarkers: ChartMarker[] = [...(markers ?? [])];
+    if (trade) {
+      const line = (price: number, color: string, title: string, style: LineStyle) =>
+        main.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title });
+      line(trade.entryPrice, "#93c5fd", trade.side === "long" ? "Your buy" : "Your short", LineStyle.Solid);
+      line(trade.stop, "#f87171", "Your stop", LineStyle.Dotted);
+      if (trade.target !== null) line(trade.target, "#34d399", "Your target", LineStyle.Dotted);
+      const bar = entryBar(data.bars, trade.entryTime);
+      if (bar) {
+        allMarkers.push({
+          time: bar.time as Time, position: trade.side === "long" ? "belowBar" : "aboveBar",
+          shape: trade.side === "long" ? "arrowUp" : "arrowDown", color: "#93c5fd", text: "Entry",
+        } as ChartMarker);
+      }
+    }
+    // Trade markers (from a backtest, or the trade above), sorted by time as the library requires.
+    if (allMarkers.length) {
       const first = data.bars.length ? data.bars[0].time : 0;
-      createSeriesMarkers(main, [...markers].filter((m) => (m.time as number) >= first).sort((a, b) => (a.time as number) - (b.time as number)));
+      createSeriesMarkers(main, allMarkers.filter((m) => (m.time as number) >= first).sort((a, b) => (a.time as number) - (b.time as number)));
     }
 
     // Indicators: price overlays share pane 0; each other kind gets its own pane.
@@ -340,7 +377,13 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     const n = data.bars.length;
     const viewKey = `${data.symbol.code}|${data.timeframe}|${data.style}`;
     const saved = viewRef.current;
-    if (n > 0 && focusTime !== undefined) {
+    const tradeBar = trade ? entryBar(data.bars, trade.entryTime) : null;
+    if (n > 0 && trade && framedTradeRef.current !== trade.id) {
+      // First look at this trade: from a little before its entry up to now.
+      framedTradeRef.current = trade.id;
+      const idx = tradeBar ? data.bars.indexOf(tradeBar) : n - 1;
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, Math.min(idx - 30, n - 60), n - 400), to: n + 6 });
+    } else if (n > 0 && focusTime !== undefined) {
       const idx = data.bars.findIndex((b) => b.time >= focusTime);
       const at = idx < 0 ? n - 1 : idx;
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, at - 60), to: Math.min(n + 4, at + 60) });
@@ -435,7 +478,7 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     };
     // syncPlan is stable per data set; plan changes are handled by their own effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, markers, focusTime]);
+  }, [data, markers, focusTime, trade]);
 
   const p = data.symbol.precision;
   const change = legend ? legend.close - legend.open : 0;
@@ -454,4 +497,15 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
       <div ref={host} className="chart-host" />
     </div>
   );
+}
+
+
+/** The candle a trade was opened in: the last one starting at or before the entry time. */
+function entryBar<T extends { time: number }>(bars: T[], entryTime: number): T | null {
+  let found: T | null = null;
+  for (const b of bars) {
+    if (b.time <= entryTime) found = b;
+    else break;
+  }
+  return found;
 }
