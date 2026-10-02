@@ -160,8 +160,12 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     bar.close = live.mid;
     bar.high = Math.max(bar.high, live.mid);
     bar.low = Math.min(bar.low, live.mid);
-    if (data.style === "line" || data.style === "area") main.update({ time: bar.time as Time, value: bar.close });
-    else main.update({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+    try {
+      if (data.style === "line" || data.style === "area") main.update({ time: bar.time as Time, value: bar.close });
+      else main.update({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+    } catch {
+      return; // a live price must never break the chart; the next refresh catches up
+    }
     setLegend((l) => (l && l.time === bar.time ? { ...l, high: bar.high, low: bar.low, close: bar.close } : l));
   }, [live, data.style]);
   // Remembers where you'd scrolled and zoomed, so an automatic refresh doesn't reset the view.
@@ -200,22 +204,29 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     const future = data.futureTimes.map((t) => ({ time: t as Time }));
     if (data.style === "line") {
       main = chart.addSeries(LineSeries, { color: "#e5edf5", lineWidth: 2, priceFormat: priceFormat(precision) });
-      main.setData([...closes, ...future]);
+      main.setData(closes);
     } else if (data.style === "area") {
       main = chart.addSeries(AreaSeries, {
         lineColor: "#60a5fa", topColor: "rgba(96,165,250,0.35)", bottomColor: "rgba(96,165,250,0.02)",
         priceFormat: priceFormat(precision),
       });
-      main.setData([...closes, ...future]);
+      main.setData(closes);
     } else if (data.style === "bars") {
       main = chart.addSeries(BarSeries, { upColor: C.up, downColor: C.down, priceFormat: priceFormat(precision) });
-      main.setData([...ohlc, ...future]);
+      main.setData(ohlc);
     } else {
       main = chart.addSeries(CandlestickSeries, {
         upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down,
         priceFormat: priceFormat(precision),
       });
-      main.setData([...ohlc, ...future]);
+      main.setData(ohlc);
+    }
+
+    // Room to the right for projected lines (e.g. the Ichimoku cloud). Kept on its own empty series
+    // so the price series always ends at the latest candle and live prices can update it.
+    if (future.length) {
+      const spacer = chart.addSeries(LineSeries, { visible: false, lastValueVisible: false, priceLineVisible: false });
+      spacer.setData(future);
     }
 
     // The forming candle, which live prices move until the next refresh.
