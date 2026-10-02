@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, SignalsResponse, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, Quote, SignalsResponse, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -61,6 +61,7 @@ export const api = {
     request<BacktestResult>("/api/backtests", { method: "POST", body: JSON.stringify(body) }),
   backtests: () => request<{ runs: BacktestSummary[] }>("/api/backtests"),
   backtest: (id: number) => request<BacktestResult>(`/api/backtests/${id}`),
+  quote: (symbol: string) => request<Quote>(`/api/tools/quote?${new URLSearchParams({ symbol })}`),
   positionSize: (body: { symbol: string; balance: number; risk_pct: number; entry: number; stop: number; mode: string }) =>
     request<PositionSize>("/api/tools/position-size", { method: "POST", body: JSON.stringify(body) }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),

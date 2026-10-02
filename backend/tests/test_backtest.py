@@ -287,3 +287,10 @@ def test_no_financing_in_cash_mode_even_if_set():
     bars = bars_from(FLAT + [(100, 101, 99, 100)] * 4)
     t = engine.run(bars, scripted({2: 90.0}, {5}), {}, settings(costs=c, mode="cash", leverage=1, direction="long"), GBP).trades[0]
     assert t.pnl_gbp == pytest.approx(0.0)
+
+
+def test_quote_for_the_calculator(signed_in):
+    d = signed_in.get("/api/tools/quote", params={"symbol": "NVDA"}).json()
+    assert d["price"] > 0 and d["currency"] == "USD" and d["sample"] is True
+    assert d["suggestedStopLong"] < d["price"] < d["suggestedStopShort"]
+    assert signed_in.get("/api/tools/quote", params={"symbol": "NOPE"}).status_code == 400

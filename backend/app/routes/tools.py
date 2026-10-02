@@ -2,7 +2,7 @@
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,10 @@ from ..db import get_session
 from ..deps import current_user
 from ..market.directory import lookup
 from ..market.fx import converter, quote_currency
+from ..market.providers.base import ProviderError
+from ..market.service import get_bars
+from ..market.timeframes import get_timeframe
+from ..indicators.core import atr
 from ..models import User
 from ..risk.guard import RiskSettings, leverage_cap, size_trade
 
@@ -68,4 +72,38 @@ def position_size(body: PositionBody, db: Session = Depends(get_session), _: Use
         "perPointGbp": round(d.units / per_gbp, 4),
         "costGbp": round(round_trip, 2),
         "marginGbp": round(value_gbp / cap, 2) if mode == "cfd" else None,
+    }
+
+
+@router.get("/quote")
+def quote(symbol: str = Query(max_length=32), db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    """The latest price as a guide for the calculator, plus a typical stop distance (2 × daily ATR).
+    Uses the same cached prices as the charts, so it rarely costs a data request."""
+    import pandas as pd
+
+    try:
+        sym = lookup(db, symbol)
+        daily = get_bars(db, sym, get_timeframe("1d"), 60)
+        # London shares only have daily prices on the free feed; others use 15-minute candles for freshness.
+        recent = daily if sym.provider == "alphavantage" else get_bars(db, sym, get_timeframe("15m"), 50)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not recent.bars:
+        raise HTTPException(status_code=502, detail="No recent price available.")
+    last = recent.bars[-1]
+    df = pd.DataFrame({"high": [b.high for b in daily.bars], "low": [b.low for b in daily.bars],
+                       "close": [b.close for b in daily.bars]})
+    daily_atr = atr(df, 14).iloc[-1] if len(df) >= 15 else float("nan")
+    ok = daily_atr == daily_atr
+    return {
+        "symbol": sym.to_dict(),
+        "price": last.close,
+        "time": last.ts,
+        "sample": recent.sample,
+        "currency": quote_currency(sym),
+        "dailyAtr": float(daily_atr) if ok else None,
+        "suggestedStopLong": float(last.close - 2 * daily_atr) if ok else None,
+        "suggestedStopShort": float(last.close + 2 * daily_atr) if ok else None,
     }

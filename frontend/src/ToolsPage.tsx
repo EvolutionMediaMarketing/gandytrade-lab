@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
-import type { BacktestSummary, Catalogue, PositionSize, SymbolInfo } from "./types";
+import type { BacktestSummary, Catalogue, PositionSize, Quote, SymbolInfo } from "./types";
 
 interface Props {
   catalogue: Catalogue | null;
@@ -32,10 +32,34 @@ function PositionCalculator({ catalogue, favourites, onToggleFavourite, onAuthEr
   const [stop, setStop] = useState("");
   const [out, setOut] = useState<PositionSize | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  // The entry box follows the live price until you type your own number in it.
+  const entryIsAuto = useRef(true);
 
   useEffect(() => {
     if (!symbol) setSymbol(catalogue?.symbols.find((s) => s.code === code));
   }, [catalogue, code, symbol]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQuote(null);
+    api
+      .quote(code)
+      .then((q) => {
+        if (cancelled) return;
+        setQuote(q);
+        if (entryIsAuto.current) setEntry(q.price.toFixed(q.symbol.precision));
+      })
+      .catch(onAuthError);
+    return () => {
+      cancelled = true;
+    };
+  }, [code, onAuthError]);
+
+  const decimals = quote?.symbol.precision ?? symbol?.precision ?? 2;
+  const shown = (v: number) => v.toFixed(decimals);
+  const quoteTime = quote ? new Date(quote.time * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  const shortAllowed = (mode || (["stock", "etf", "ukstock"].includes(symbol?.asset_class ?? "") ? "cash" : "cfd")) === "cfd";
 
   function calculate(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +84,7 @@ function PositionCalculator({ catalogue, favourites, onToggleFavourite, onAuthEr
       <form onSubmit={calculate} className="tool-form">
         <MarketPicker value={code} current={symbol} popular={catalogue?.symbols ?? []} counts={catalogue?.marketCounts ?? {}}
           favourites={favourites} onToggleFavourite={onToggleFavourite}
-          onChange={(s) => { setSymbol(s); setCode(s.code); setOut(null); setMode(""); }} onAuthError={onAuthError} />
+          onChange={(s) => { setSymbol(s); setCode(s.code); setOut(null); setMode(""); entryIsAuto.current = true; setEntry(""); setStop(""); }} onAuthError={onAuthError} />
         <div className="segmented wide" role="radiogroup" aria-label="Account type">
           <button type="button" className={mode === "cash" ? "on" : ""} onClick={() => setMode("cash")}>Real shares / no leverage</button>
           <button type="button" className={mode === "cfd" ? "on" : ""} onClick={() => setMode("cfd")}>CFD / spread bet</button>
@@ -69,9 +93,34 @@ function PositionCalculator({ catalogue, favourites, onToggleFavourite, onAuthEr
         <div className="param-grid">
           <label><span>Account balance (£)</span><input type="number" min={1} step="any" value={balance} onChange={(e) => setBalance(e.target.value)} /></label>
           <label><span>Risk per trade (%)</span><input type="number" min={0.1} max={2} step="any" value={risk} onChange={(e) => setRisk(e.target.value)} /></label>
-          <label><span>Entry price ({priceHint})</span><input type="number" step="any" required value={entry} onChange={(e) => setEntry(e.target.value)} /></label>
+          <label><span>Entry price ({priceHint})</span>
+            <input type="number" step="any" required value={entry} onChange={(e) => { entryIsAuto.current = false; setEntry(e.target.value); }} /></label>
           <label><span>Stop-loss price</span><input type="number" step="any" required value={stop} onChange={(e) => setStop(e.target.value)} /></label>
         </div>
+        {quote && (
+          <div className="quote-hints">
+            <p>
+              Latest price <b className="mono">{shown(quote.price)}</b> <span className="muted">({quoteTime}{quote.sample ? ", sample data" : ""})</span>
+              {entry !== shown(quote.price) && (
+                <button type="button" className="link-button" onClick={() => { entryIsAuto.current = true; setEntry(shown(quote.price)); }}>Use it</button>
+              )}
+            </p>
+            {quote.suggestedStopLong !== null && quote.dailyAtr !== null && (
+              <p>
+                A typical day's move (ATR) is {shown(quote.dailyAtr)}. A stop 2 × that away:{" "}
+                <button type="button" className="link-button" onClick={() => setStop(shown(quote.suggestedStopLong!))}>
+                  {shown(quote.suggestedStopLong)} for a buy
+                </button>
+                {shortAllowed && quote.suggestedStopShort !== null && (
+                  <> or <button type="button" className="link-button" onClick={() => setStop(shown(quote.suggestedStopShort!))}>
+                    {shown(quote.suggestedStopShort)} for a short
+                  </button></>
+                )}
+              </p>
+            )}
+            <p className="muted">A guide only: the price will have moved by the time you'd trade.</p>
+          </div>
+        )}
         <button className="primary" type="submit">Work it out</button>
         {error && <p className="form-error" role="alert">{error}</p>}
       </form>

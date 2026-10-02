@@ -236,6 +236,17 @@ export interface BacktestRequest {
   costs: Partial<CostSettings>;
 }
 
+export interface Quote {
+  symbol: SymbolInfo;
+  price: number;
+  time: number;
+  sample: boolean;
+  currency: string;
+  dailyAtr: number | null;
+  suggestedStopLong: number | null;
+  suggestedStopShort: number | null;
+}
+
 export interface PositionSize {
   symbol: SymbolInfo;
   mode: "cash" | "cfd";
