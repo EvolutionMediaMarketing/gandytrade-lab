@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
+import BacktestPage from "./BacktestPage";
+import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
+import ToolsPage from "./ToolsPage";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
@@ -59,7 +62,35 @@ function defaults(def: IndicatorDef): Record<string, number> {
   return Object.fromEntries(def.params.map((p) => [p.key, p.default]));
 }
 
+const PAGES = [
+  { key: "charts", label: "Charts" },
+  { key: "backtest", label: "Backtest" },
+  { key: "tools", label: "Tools" },
+  { key: "learn", label: "Learn" },
+] as const;
+type Page = (typeof PAGES)[number]["key"];
+
+function pageFromHash(): Page {
+  const h = window.location.hash.replace(/^#\/?/, "");
+  return (PAGES.find((p) => p.key === h)?.key ?? "charts") as Page;
+}
+
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
+  const [page, setPage] = useState<Page>(pageFromHash);
+  const [backtestInit, setBacktestInit] = useState<{ symbol?: string; strategy?: string } | undefined>();
+
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const go = (p: Page) => {
+    window.location.hash = `/${p}`;
+    setPage(p);
+    window.scrollTo({ top: 0 });
+  };
+
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [favourites, setFavourites] = useState<SymbolInfo[]>([]);
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
@@ -140,12 +171,12 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   }, [prefs]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (page === "charts") load();
+  }, [load, page]);
 
   // Automatic refresh, paused while the tab is hidden to save the free data allowance.
   useEffect(() => {
-    if (!prefs.autoRefresh) return;
+    if (!prefs.autoRefresh || page !== "charts") return;
     const seconds = REFRESH_SECONDS[prefs.timeframe] ?? 60;
     const tick = () => {
       if (document.visibilityState === "visible") load(true);
@@ -156,7 +187,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [prefs.autoRefresh, prefs.timeframe, load]);
+  }, [prefs.autoRefresh, prefs.timeframe, load, page]);
 
   const update = (patch: Partial<Prefs>) => setPrefs((p) => ({ ...p, ...patch }));
 
@@ -191,18 +222,38 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           : "";
 
   return (
-    <div className="workspace">
+    <div className={page === "charts" ? "workspace fixed" : "workspace"}>
       <header className="topbar">
         <div className="brand small">
           <span className="brand-mark" aria-hidden="true" />
           <span className="brand-name">GandyTrade Lab</span>
         </div>
-        <span className="mode-badge" title="No real money is involved anywhere in this version">Research · no real money</span>
+        <nav className="main-nav" aria-label="Sections">
+          {PAGES.map((p) => (
+            <a key={p.key} href={`#/${p.key}`} className={page === p.key ? "on" : ""} aria-current={page === p.key ? "page" : undefined}
+              onClick={(e) => { e.preventDefault(); go(p.key); }}>
+              {p.label}
+            </a>
+          ))}
+        </nav>
         <div className="spacer" />
+        <span className="mode-badge" title="No real money is involved anywhere in this version">Research · no real money</span>
         <span className="muted user">{username}</span>
         <button className="ghost" onClick={signOut}>Sign out</button>
       </header>
 
+      {page === "backtest" && (
+        <BacktestPage key={JSON.stringify(backtestInit ?? {})} catalogue={catalogue} favourites={favourites}
+          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit} />
+      )}
+      {page === "tools" && (
+        <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />
+      )}
+      {page === "learn" && (
+        <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy, symbol: prefs.symbol }); go("backtest"); }} />
+      )}
+
+      {page === "charts" && (<>
       <div className="toolbar" role="toolbar" aria-label="Chart settings">
         <MarketPicker
           value={prefs.symbol}
@@ -300,6 +351,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           </aside>
         )}
       </div>
+      </>)}
 
       <footer className="footer">
         <span>Educational use only. Not financial advice.</span>

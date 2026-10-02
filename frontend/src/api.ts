@@ -1,4 +1,6 @@
-import type { ActiveIndicator, Catalogue, ChartData, SymbolInfo } from "./types";
+import type {
+  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, StrategiesResponse, SymbolInfo,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -44,10 +46,18 @@ export const api = {
       `/api/markets/search?${new URLSearchParams({ q, class: assetClass, limit: "60" })}`,
       { signal },
     ),
-  chart: (symbol: string, timeframe: string, style: string, indicators: ActiveIndicator[], background = false) =>
+  chart: (symbol: string, timeframe: string, style: string, indicators: ActiveIndicator[], background = false, limit = 1000) =>
     request<ChartData>(
       "/api/chart",
-      { method: "POST", body: JSON.stringify({ symbol, timeframe, style, limit: 1000, indicators }) },
+      { method: "POST", body: JSON.stringify({ symbol, timeframe, style, limit, indicators }) },
       background,
     ),
+  strategies: () => request<StrategiesResponse>("/api/strategies"),
+  runBacktest: (body: BacktestRequest) =>
+    request<BacktestResult>("/api/backtests", { method: "POST", body: JSON.stringify(body) }),
+  backtests: () => request<{ runs: BacktestSummary[] }>("/api/backtests"),
+  backtest: (id: number) => request<BacktestResult>(`/api/backtests/${id}`),
+  positionSize: (body: { symbol: string; balance: number; risk_pct: number; entry: number; stop: number; mode: string }) =>
+    request<PositionSize>("/api/tools/position-size", { method: "POST", body: JSON.stringify(body) }),
+  deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

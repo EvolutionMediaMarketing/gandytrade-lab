@@ -229,3 +229,16 @@ def test_shares_default_to_no_leverage(signed_in):
     data = signed_in.post("/api/backtests", json={"symbol": "AAPL", "strategy": "macd_momentum"}).json()
     assert data["assumptions"]["mode"] == "cash" and data["assumptions"]["leverageCap"] == 1
     assert data["assumptions"]["costs"]["fx_fee_pct"] == 0.15
+
+
+def test_position_size_tool(signed_in):
+    r = signed_in.post("/api/tools/position-size", json={"symbol": "TSCO.LON", "balance": 200, "risk_pct": 1, "entry": 380, "stop": 370})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    # £2 risk, 10p stop = £0.10 a share, so 20 shares worth £76
+    assert d["units"] == pytest.approx(20) and d["riskGbp"] == pytest.approx(2.0) and d["valueGbp"] == pytest.approx(76.0)
+    assert d["mode"] == "cash" and d["currency"] == "GBX"
+    short = signed_in.post("/api/tools/position-size", json={"symbol": "AAPL", "balance": 200, "entry": 100, "stop": 105})
+    assert short.status_code == 400  # can't short real shares
+    capped = signed_in.post("/api/tools/position-size", json={"symbol": "TSCO.LON", "balance": 200, "entry": 380, "stop": 379.9}).json()
+    assert capped["capped"] is True and capped["valueGbp"] <= 200.01

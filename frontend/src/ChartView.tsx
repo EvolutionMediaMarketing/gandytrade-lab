@@ -12,8 +12,10 @@ import {
   LineStyle,
   SeriesType,
   Time,
+  SeriesMarker,
   TickMarkType,
   createChart,
+  createSeriesMarkers,
 } from "lightweight-charts";
 import { BandFill } from "./BandFill";
 import type { BarData, ChartData } from "./types";
@@ -86,7 +88,9 @@ function crosshairLabel(seconds: number, timeframe: string): string {
     : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function ChartView({ data }: { data: ChartData }) {
+export type ChartMarker = SeriesMarker<Time>;
+
+export default function ChartView({ data, markers, focusTime }: { data: ChartData; markers?: ChartMarker[]; focusTime?: number }) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   // Remembers where you'd scrolled and zoomed, so an automatic refresh doesn't reset the view.
@@ -141,6 +145,12 @@ export default function ChartView({ data }: { data: ChartData }) {
         priceFormat: priceFormat(precision),
       });
       main.setData([...ohlc, ...future]);
+    }
+
+    // Trade markers from a backtest (buy, sell, exit), sorted by time as the library requires.
+    if (markers && markers.length) {
+      const first = data.bars.length ? data.bars[0].time : 0;
+      createSeriesMarkers(main, [...markers].filter((m) => (m.time as number) >= first).sort((a, b) => (a.time as number) - (b.time as number)));
     }
 
     // Indicators: price overlays share pane 0; each other kind gets its own pane.
@@ -237,7 +247,11 @@ export default function ChartView({ data }: { data: ChartData }) {
     const n = data.bars.length;
     const viewKey = `${data.symbol.code}|${data.timeframe}|${data.style}`;
     const saved = viewRef.current;
-    if (n > 0) {
+    if (n > 0 && focusTime !== undefined) {
+      const idx = data.bars.findIndex((b) => b.time >= focusTime);
+      const at = idx < 0 ? n - 1 : idx;
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, at - 60), to: Math.min(n + 4, at + 60) });
+    } else if (n > 0) {
       if (saved && saved.key === viewKey) {
         chart.timeScale().setVisibleLogicalRange({ from: n - saved.fromEnd, to: n - saved.toEnd });
       } else {
@@ -260,7 +274,7 @@ export default function ChartView({ data }: { data: ChartData }) {
       chart.remove();
       chartRef.current = null;
     };
-  }, [data]);
+  }, [data, markers, focusTime]);
 
   const p = data.symbol.precision;
   const change = legend ? legend.close - legend.open : 0;
