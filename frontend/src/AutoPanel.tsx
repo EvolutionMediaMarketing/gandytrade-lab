@@ -169,12 +169,17 @@ function NewRun({ account, options, catalogue, favourites, onToggleFavourite, on
     return () => ctl.abort();
   }, [code, symbol]);
 
-  const allowed = symbol ? options.timeframes[symbol.provider] ?? [] : [];
   const chosen = options.strategies.find((s) => s.key === strategy);
+  const SHORT = ["1m", "5m", "15m"];
+  const allowed = (symbol ? options.timeframes[symbol.provider] ?? [] : [])
+    .filter((t) => !chosen?.intradayOnly || SHORT.includes(t));  // scalpers only run on short candles
   const canShort = account.mode === "cfd" && !!chosen?.canShort;
   useEffect(() => {
-    if (allowed.length && !allowed.includes(timeframe)) setTimeframe(allowed.includes("1d") ? "1d" : allowed[0]);
-  }, [allowed, timeframe]);
+    if (allowed.length && !allowed.includes(timeframe)) {
+      const preferred = chosen?.intradayOnly ? chosen.suggestedTimeframe || "5m" : "1d";
+      setTimeframe(allowed.includes(preferred) ? preferred : allowed[0]);
+    }
+  }, [allowed, timeframe, chosen]);
 
   return (
     <form className="new-run" onSubmit={(e) => {

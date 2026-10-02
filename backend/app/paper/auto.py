@@ -39,10 +39,11 @@ from . import service as paper
 
 log = logging.getLogger(__name__)
 
-# Timeframes each free data service can keep up with. Short ones would use up the free allowances.
+# Timeframes each free data service can keep up with. OANDA's practice feed copes with 1 and 5-minute
+# candles for scalping; the worker looks once a minute, so a 1-minute run acts up to a minute late.
 # UK shares aren't offered: their free data is daily only, with no live price to fill an order at,
 # and only 25 requests a day.
-TIMEFRAMES = {"oanda": ["15m", "30m", "1h", "4h", "1d", "1w"], "twelvedata": ["1h", "4h", "1d"]}
+TIMEFRAMES = {"oanda": ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"], "twelvedata": ["1h", "4h", "1d"]}
 # How often a run that's waiting for a new candle looks again, per data service.
 LOOK_EVERY = {"oanda": 60, "twelvedata": 300}
 NOT_AUTOMATIC = {"buy_hold", "support_resistance"}  # the yardstick, and the one that needs your own levels
@@ -69,7 +70,7 @@ def allowed_timeframes(symbol: Symbol) -> list[str]:
 class Decision:
     exit_label: str = ""  # set when the open trade's exit rule is met (on any new candle)
     late_exit: bool = False  # the exit rule was met on an earlier candle the run didn't see in time
-    entry: tuple[int, float] | None = None  # (side, stop-loss) when a new trade is due
+    entry: tuple[int, float, float | None] | None = None  # (side, stop-loss, target) when a new trade is due
     met: str = ""  # a short note on the latest candle, for the run's status line
 
 
@@ -102,7 +103,9 @@ def decide(bars: list[Bar], strategy: Strategy, params: dict, direction: str, op
         wanted = [s for s, _ in sides if entries[s]]
     if len(wanted) == 1:
         s = wanted[0]
-        d.entry = (s, float(dict(sides)[s].stop.iloc[last]))
+        side = dict(sides)[s]
+        target = float(side.target.iloc[last]) if side.target is not None and side.target.iloc[last] == side.target.iloc[last] else None
+        d.entry = (s, float(side.stop.iloc[last]), target)
     # A one-line summary of the conditions, e.g. "Buy: 2 of 3 conditions met".
     parts = []
     for s, side in sides:
@@ -136,6 +139,8 @@ def create(db: Session, user: User, account_id: int, code: str, timeframe: str, 
         raise AutoError(f"Automatic trading on {symbol.name} can use these timeframes: {allowed}. "
                         "Shorter ones would use up the free data allowance.")
     tf = get_timeframe(timeframe)
+    if strategy.intraday_only and tf.seconds > 900:
+        raise AutoError(f"{strategy.name} only trades on 1 to 15-minute candles.")
     direction = "both" if direction == "both" and acct.mode == "cfd" and strategy.can_short else "long"
     running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
                                                                         AutoRun.status == "running"))
@@ -285,13 +290,16 @@ def step(db: Session, run: AutoRun) -> str:
         done.append(f"closed the {'buy' if t.side > 0 else 'short'} (exit rule: {d.exit_label}){late}")
         t = None
     if t is None and d.entry:
-        side, stop = d.entry
+        side, stop, target = d.entry
         word = "buy" if side > 0 else "short"
+        if target is not None and (target - q.mid) * side <= 0:
+            target = None  # the price is already past the target: the exit rule manages the trade instead
         try:
-            new = paper.place(db, acct, symbol.code, side, stop, None, tf.code, source="auto", strategy=strategy.key,
+            new = paper.place(db, acct, symbol.code, side, stop, target, tf.code, source="auto", strategy=strategy.key,
                               auto_run_id=run.id,
                               reason=f"Automatic: {strategy.name} on the {label}. All entry conditions met.")
-            done.append(f"opened a {word} at {new.entry_price:.{symbol.precision}f}, stop-loss {stop:.{symbol.precision}f}")
+            done.append(f"opened a {word} at {new.entry_price:.{symbol.precision}f}, stop-loss {stop:.{symbol.precision}f}"
+                        + (f", target {target:.{symbol.precision}f}" if target is not None else ""))
         except paper.PaperError as exc:
             done.append(f"a {word} was due but the safeguards stopped it: {exc}")
     run.last_bar_ts = candle.ts

@@ -43,6 +43,9 @@ class Side:
     stop: pd.Series  # stop-loss price to use if a trade is opened after this candle
     exit_label: str = ""
     stop_label: str = ""
+    # Optional profit target: the price to take profit at if a trade is opened after this candle.
+    target: pd.Series | None = None
+    target_label: str = ""
 
     def entry(self) -> pd.Series:
         if not self.conditions:
@@ -74,6 +77,8 @@ class Strategy:
     compute: Callable[[pd.DataFrame, dict], Rules]
     benchmark: bool = False  # buy and hold: compared against, not risk-managed
     can_short: bool = True
+    intraday_only: bool = False  # scalping: only trades on short candles (1 to 15 minutes)
+    suggested_timeframe: str = ""
 
     def clean_params(self, raw: dict | None) -> dict:
         raw = raw or {}
@@ -97,6 +102,7 @@ class Strategy:
             "key": self.key, "name": self.name, "summary": self.summary, "rules": self.rules_text,
             "worksWhen": self.works_when, "failsWhen": self.fails_when, "exercise": self.exercise,
             "params": [p.to_dict() for p in self.params], "benchmark": self.benchmark, "canShort": self.can_short,
+            "intradayOnly": self.intraday_only, "suggestedTimeframe": self.suggested_timeframe,
         }
 
 
@@ -114,3 +120,16 @@ def crossed_below(a: pd.Series, b: pd.Series | float) -> pd.Series:
 
 def never(index: pd.Index) -> pd.Series:
     return pd.Series(False, index=index)
+
+
+# --- Session hours (UK time), for strategies that only trade at certain times of day --------------
+
+def uk_clock(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series, int]:
+    """For each candle: UK minutes past midnight at its start and at its end, the UK date, and the
+    candle length in minutes. British Summer Time is handled."""
+    when = pd.to_datetime(df["ts"], unit="s", utc=True).dt.tz_convert("Europe/London")
+    start = when.dt.hour * 60 + when.dt.minute
+    gaps = df["ts"].diff()
+    gaps = gaps[gaps > 0]
+    step = int(gaps.mode().iloc[0] // 60) if len(gaps) else 0  # the usual gap, ignoring weekends and holidays
+    return start, start + step, when.dt.date, step

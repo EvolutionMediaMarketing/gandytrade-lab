@@ -18,7 +18,7 @@ from .backtest.costs import default_costs
 from .backtest.service import default_mode
 from .indicators.core import atr
 from .market.directory import lookup
-from .market.service import get_history
+from .market.service import MAX_HISTORY, get_history
 from .market.timeframes import get_timeframe
 
 LADDER = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
@@ -68,7 +68,7 @@ def target_odds(db: Session, code: str, timeframe: str, entry: float, stop: floa
     if entry <= 0 or stop <= 0 or entry == stop:
         raise ValueError("Set an entry and a stop-loss first.")
     side = 1 if stop < entry else -1
-    history = get_history(db, symbol, tf)
+    history = get_history(db, symbol, tf, MAX_HISTORY)
     bars = history.bars
     horizon = min(MAX_HORIZON, max(20, len(bars) // 5))
     if len(bars) - horizon - 20 < MIN_STARTS:

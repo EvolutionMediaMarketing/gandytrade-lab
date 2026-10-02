@@ -183,6 +183,7 @@ function SideView({ side, precision, showSide, onShowPlan }: {
         <dl className="facts plan">
           <dt>{side.status === "complete" ? "Rules' entry (next open, about)" : "If it completes, entry about"}</dt><dd>{fmt(side.plan.entry, precision)}</dd>
           <dt>Stop-loss ({side.plan.stopRule})</dt><dd>{fmt(side.plan.stop, precision)}</dd>
+          {side.plan.target !== undefined && <><dt>Target ({side.plan.targetRule})</dt><dd>{fmt(side.plan.target, precision)}</dd></>}
           <dt>Size from the risk guard</dt><dd>{side.plan.units < 10 ? side.plan.units.toFixed(3) : Math.floor(side.plan.units).toLocaleString("en-GB")}</dd>
           <dt>Lose if stopped out</dt><dd>{money(side.plan.riskGbp)}</dd>
           <dt>Position value</dt><dd>{money(side.plan.valueGbp)}</dd>

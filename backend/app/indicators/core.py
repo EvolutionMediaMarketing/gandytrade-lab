@@ -81,6 +81,21 @@ def atr(df: pd.DataFrame, length: int = 14) -> pd.Series:
     return rma(true_range(df), length)
 
 
+def adx(df: pd.DataFrame, length: int = 14) -> pd.Series:
+    """Average Directional Index (Wilder): how strongly the price is trending, 0 to 100, whichever way.
+    Below about 20 usually means a quiet, sideways market."""
+    up = df["high"].diff()
+    down = -df["low"].diff()
+    plus_dm = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    tr = rma(true_range(df), length)
+    plus_di = 100 * rma(plus_dm.fillna(0), length) / tr
+    minus_di = 100 * rma(minus_dm.fillna(0), length) / tr
+    total = (plus_di + minus_di).replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / total
+    return rma(dx, length)
+
+
 def stochastic(df: pd.DataFrame, k_length: int = 14, k_smooth: int = 3, d_length: int = 3) -> pd.DataFrame:
     lowest = df["low"].rolling(k_length, min_periods=k_length).min()
     highest = df["high"].rolling(k_length, min_periods=k_length).max()

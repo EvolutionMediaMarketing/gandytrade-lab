@@ -5,7 +5,9 @@ On each candle, in this order:
      An entry is resized from the actual opening price, and cancelled if the price has
      already jumped past its stop-loss.
   2. During the candle: if the low (or high, for a short) reaches the stop-loss, the trade
-     closes at the stop, or at the open if the price gapped through it.
+     closes at the stop, or at the open if the price gapped through it. Then, for strategies
+     with a profit target, the same for the target (if one candle reached both, the stop is
+     assumed to have come first, the cautious choice).
   3. At the close: the strategy looks at the finished candle and decides what to do at the
      next open. The risk guard sizes or refuses every new trade.
 
@@ -47,6 +49,7 @@ class Trade:
     stop: float
     units: float
     entry_fees_gbp: float
+    target: float | None = None
     exit_i: int = -1
     exit_ts: int = 0
     exit_price: float = 0.0
@@ -61,7 +64,7 @@ class Trade:
     def to_dict(self) -> dict:
         return {
             "side": "long" if self.side > 0 else "short",
-            "entryTime": self.entry_ts, "entryPrice": self.entry_price, "stop": self.stop,
+            "entryTime": self.entry_ts, "entryPrice": self.entry_price, "stop": self.stop, "target": self.target,
             "exitTime": self.exit_ts, "exitPrice": self.exit_price, "exitReason": self.exit_reason,
             "units": self.units, "pnl": round(self.pnl_gbp, 2), "gross": round(self.gross_gbp, 2),
             "costs": round(self.costs_gbp, 2),
@@ -137,6 +140,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
     entries = {s: side.entry().to_numpy() for s, side in sides}
     exits = {s: side.exit.fillna(False).astype(bool).to_numpy() for s, side in sides}
     stops = {s: side.stop.to_numpy(dtype=float) for s, side in sides}
+    targets = {s: (side.target.to_numpy(dtype=float) if side.target is not None else None) for s, side in sides}
 
     ts = df["ts"].to_numpy(dtype=np.int64)
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
@@ -148,7 +152,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
     skipped: dict[str, int] = {}
     pos: Trade | None = None
     pending_exit = ""  # the exit rule's description, when one fired at the last close
-    pending_entry: tuple[int, float] | None = None
+    pending_entry: tuple[int, float, float | None] | None = None
 
     def close(i: int, mid: float, reason: str, fill: float | None = None) -> None:
         nonlocal cash, pos
@@ -182,7 +186,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         if pending_entry is not None and pos is None and limits.halted:
             pending_entry = None
         if pending_entry is not None and pos is None:
-            side, stop = pending_entry
+            side, stop, target = pending_entry
             buying = side > 0
             price = book.fill(o[i], buying)
             if (o[i] - stop) * side <= 0:
@@ -198,8 +202,10 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
                 if d.ok:
                     fees = book.order_fees(d.units, price, ts[i], buying, opening=True)
                     cash -= fees
+                    if target is not None and (target - o[i]) * side <= 0:
+                        target = None  # the price opened past the target already: manage the trade by its exit rule
                     pos = Trade(side=side, entry_i=i, entry_ts=int(ts[i]), entry_price=price, entry_mid=o[i],
-                                stop=stop, units=d.units, entry_fees_gbp=fees,
+                                stop=stop, units=d.units, entry_fees_gbp=fees, target=target,
                                 risk_gbp=abs(price - stop) * d.units / conv.rate(ts[i]),
                                 note="Leverage-capped" if d.capped else "")
                     if d.capped:
@@ -209,7 +215,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
                     skipped[d.reason] = skipped.get(d.reason, 0) + 1
         pending_entry = None
 
-        # 2. During the candle: stop-loss
+        # 2. During the candle: stop-loss first...
         if pos is not None:
             hit = l[i] <= pos.stop if pos.side > 0 else h[i] >= pos.stop
             if hit:
@@ -217,6 +223,13 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
                 level = o[i] if gapped else pos.stop
                 close(i, level, "Stop-loss (gapped through)" if gapped else "Stop-loss",
                       fill=book.fill(level, buying=pos.side < 0))
+        # ...then the profit target (if a candle reached both, the stop is assumed to have come first)
+        if pos is not None and pos.target is not None:
+            hit = h[i] >= pos.target if pos.side > 0 else l[i] <= pos.target
+            if hit:
+                gapped = (o[i] - pos.target) * pos.side >= 0 and pos.entry_i < i
+                level = o[i] if gapped else pos.target
+                close(i, level, "Target reached", fill=book.fill(level, buying=pos.side < 0))
 
         # 3. At the close
         eq = mark(i)
@@ -236,7 +249,9 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         if block:
             skipped[block] = skipped.get(block, 0) + 1
             continue
-        pending_entry = (wanted[0], float(stops[wanted[0]][i]))
+        tgt = targets[wanted[0]]
+        tgt_value = float(tgt[i]) if tgt is not None and np.isfinite(tgt[i]) else None
+        pending_entry = (wanted[0], float(stops[wanted[0]][i]), tgt_value)
 
     final_exit, final_entry = pending_exit, (pending_entry[0] if pending_entry else 0)
     if pos is not None:

@@ -21,7 +21,7 @@ from .backtest.costs import default_costs
 from .backtest.service import default_mode
 from .market.directory import lookup
 from .market.fx import converter, quote_currency
-from .market.service import get_history
+from .market.service import MAX_HISTORY, get_history
 from .market.timeframes import get_timeframe
 from .risk.guard import RiskSettings, leverage_cap, size_trade
 from .strategies.library import STRATEGIES
@@ -36,7 +36,7 @@ def evaluate(db: Session, code: str, timeframe: str, balance: float = 200.0, ris
     symbol = lookup(db, code)
     tf = get_timeframe(timeframe)
     mode = mode if mode in ("cash", "cfd") else default_mode(symbol.asset_class)
-    history = get_history(db, symbol, tf)
+    history = get_history(db, symbol, tf, MAX_HISTORY)
     bars = history.bars
     if len(bars) < 60:
         raise ValueError(f"Not enough finished candles for {symbol.name} on {tf.label} yet.")
@@ -60,7 +60,7 @@ def evaluate(db: Session, code: str, timeframe: str, balance: float = 200.0, ris
 
     cards = []
     for s in STRATEGIES.values():
-        if s.key in SKIP:
+        if s.key in SKIP or (s.intraday_only and tf.seconds > 900):
             continue
         params = s.clean_params({})
         rules = s.run(df, params)
@@ -105,6 +105,9 @@ def evaluate(db: Session, code: str, timeframe: str, balance: float = 200.0, ris
                     "valueGbp": round(d.units * entry / now_rate, 2) if d.ok else 0,
                     "note": d.reason, "stopRule": side.stop_label, "exitRule": side.exit_label,
                 }
+                if side.target is not None and side.target.iloc[last] == side.target.iloc[last]:
+                    plan["target"] = float(side.target.iloc[last])
+                    plan["targetRule"] = side.target_label
             waiting = [c["label"] for c in checks if not c["ok"]]
             if status == "complete":
                 reason = (f"All {total} conditions are met on the latest finished candle. "

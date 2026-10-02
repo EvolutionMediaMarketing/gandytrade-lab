@@ -54,7 +54,7 @@ def test_scan_market_checks_every_result(client, history):
     rows, note = research.scan_market(db, "XAU_USD", "1d")
     db.close()
     assert note == ""
-    expected = sum(2 if s.can_short else 1 for s in research.strategies())
+    expected = sum(2 if s.can_short else 1 for s in research.strategies() if not s.intraday_only)
     assert len(rows) == expected
     for r in rows:
         assert set(r["checks"]) == set(research.CHECKS)
@@ -79,7 +79,8 @@ def test_scan_runs_in_slices_and_suggests(signed_in, history, monkeypatch):
     r = signed_in.post("/api/research", json={"markets": ["XAU_USD", "XAG_USD", "AAPL"], "timeframes": ["1d"]})
     assert r.status_code == 200, r.text
     job = r.json()
-    assert job["status"] == "queued" and job["total"] == 3
+    daily = sum(1 for s in research.strategies() if not s.intraday_only)
+    assert job["status"] == "queued" and job["total"] == 3 * daily
     assert signed_in.post("/api/research", json={}).status_code == 400  # one at a time
 
     from app.db import new_session

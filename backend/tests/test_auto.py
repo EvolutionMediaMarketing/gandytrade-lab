@@ -95,12 +95,12 @@ def test_decide_follows_the_rules():
     f = Feed()
     f.add(101)
     d = auto.decide(f.bars(), RULE, {}, "both", 0)
-    assert d.entry == (1, 100.0) and not d.exit_label
+    assert d.entry == (1, 100.0, None) and not d.exit_label
     d = auto.decide(f.bars(), RULE, {}, "both", 1)  # already holding the buy: nothing new
     assert d.entry is None and not d.exit_label
     f.add(98)
     d = auto.decide(f.bars(), RULE, {}, "both", 1)  # exit the buy, and the same candle sets up a short
-    assert d.exit_label == "Close below 100" and d.entry == (-1, 99.0)
+    assert d.exit_label == "Close below 100" and d.entry == (-1, 99.0, None)
     d = auto.decide(f.bars(), RULE, {}, "long", 1)  # long-only runs never short
     assert d.exit_label and d.entry is None
 
@@ -181,7 +181,8 @@ def test_real_shares_account_only_buys(signed_in, feed):
 
 def test_setup_checks(signed_in, feed):
     cfd = _accounts(signed_in)["cfd"]["id"]
-    assert _start(signed_in, cfd, timeframe="1m").status_code == 400  # would use up the free allowance
+    assert _start(signed_in, cfd, symbol="AAPL", timeframe="5m").status_code == 400  # too short for the US share allowance
+    assert _start(signed_in, cfd, strategy="london_breakout", timeframe="1d").status_code == 400  # scalpers need short candles
     assert _start(signed_in, cfd, strategy="buy_hold").status_code == 400
     assert _start(signed_in, cfd).status_code == 200
     r = _start(signed_in, cfd)  # same market on the same account: results would mix
@@ -257,7 +258,7 @@ def test_missed_candles_close_late_but_never_enter_late():
     d = auto.decide(f.bars(), RULE, {}, "long", 1, first_new)
     assert d.exit_label and d.late_exit and d.entry is None
     d = auto.decide(f.bars(), RULE, {}, "both", 1, first_new)  # flat after the late exit: the short is still set up now
-    assert d.entry == (-1, 100.0)
+    assert d.entry == (-1, 100.0, None)
     g = Feed()
     first_new = len(g.closes)
     g.add(101)  # an entry on a missed candle...

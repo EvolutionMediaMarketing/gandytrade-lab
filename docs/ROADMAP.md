@@ -79,6 +79,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Paper accounts | Pretend GBP balances, each set to real shares or CFD; any number of accounts, e.g. one per strategy | `backend/app/paper/` |
 | Manual paper trading | Buy or sell from the chart, with stop-loss and target, through the pre-trade checklist and risk guard | Trade panel on the chart |
 | Automatic forward tests (**done**) | A strategy trades a paper account on live prices with the same rules as the backtester; results shown beside the backtest's | Paper page, background worker |
+| Scalping strategies (**done**) | London open breakout, 5-minute trend pullback and 1-minute range fade, with UK session hours, profit targets and months of short-candle history; in Backtest, Research and automatic paper runs | Strategy library |
 | Monthly top-ups | Adds a fixed amount to a paper account each month, matching how the real pot will grow | Account settings |
 | Background worker | Fetches prices on schedule and fills paper orders, stops and targets | Separate container |
 | Trade journal | Notes, chart snapshot, reason for entry and a mood tag on every trade | Journal page |

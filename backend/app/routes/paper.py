@@ -268,7 +268,8 @@ def _run_dict(db: Session, run: AutoRun) -> dict:
 @router.get("/auto/options")
 def auto_options(user: User = Depends(current_user)) -> dict:
     return {
-        "strategies": [{"key": s.key, "name": s.name, "summary": s.summary, "canShort": s.can_short}
+        "strategies": [{"key": s.key, "name": s.name, "summary": s.summary, "canShort": s.can_short,
+                        "intradayOnly": s.intraday_only, "suggestedTimeframe": s.suggested_timeframe}
                        for s in auto.automatic_strategies()],
         "timeframes": auto.TIMEFRAMES, "maxRunning": auto.MAX_RUNNING,
     }

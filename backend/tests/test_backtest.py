@@ -166,11 +166,15 @@ def test_buy_and_hold():
 def test_strategies_never_look_ahead(key):
     """Signals on candle i must be the same whether or not later candles exist."""
     sym = get_symbol("EUR_USD")
-    full = sample.generate(sym, get_timeframe("1d"), 800, now=T0 + 900 * DAY)
     strat = STRATEGIES[key]
+    if strat.intraday_only:  # scalpers: ten days of 5-minute candles
+        full = sample.generate(sym, get_timeframe("5m"), 3000, now=T0 + 900 * DAY)
+        cut = 2000
+    else:
+        full = sample.generate(sym, get_timeframe("1d"), 800, now=T0 + 900 * DAY)
+        cut = 600
     params = {"support": 1.0, "resistance": 1.2} if key == "support_resistance" else {}
     df_full = engine._frame(full)
-    cut = 600
     df_cut = engine._frame(full[:cut])
     a, b = strat.run(df_full, params), strat.run(df_cut, params)
     for side_full, side_cut in ((a.long, b.long), (a.short, b.short)):
@@ -180,17 +184,22 @@ def test_strategies_never_look_ahead(key):
         pd.testing.assert_series_equal(side_full.exit.fillna(False).astype(bool).iloc[:cut],
                                        side_cut.exit.fillna(False).astype(bool), check_names=False)
         pd.testing.assert_series_equal(side_full.stop.iloc[:cut], side_cut.stop, check_names=False)
+        if side_full.target is not None:
+            pd.testing.assert_series_equal(side_full.target.iloc[:cut], side_cut.target, check_names=False)
+        if strat.intraday_only:
+            assert side_full.entry().any(), f"{key} never set up on 5-minute candles"
 
 
 @pytest.mark.parametrize("key", [k for k in STRATEGIES if k not in ("buy_hold", "support_resistance")])
 def test_every_strategy_trades_on_sample_data(key):
     sym = get_symbol("EUR_USD")
-    bars = sample.generate(sym, get_timeframe("1d"), 2000, now=T0 + 3000 * DAY)
+    tf = "5m" if STRATEGIES[key].intraday_only else "1d"
+    bars = sample.generate(sym, get_timeframe(tf), 6000 if tf == "5m" else 2000, now=T0 + 3000 * DAY)
     s = settings(costs=default_costs("forex", "cfd"), leverage=leverage_cap("EUR_USD", "forex", "cfd"))
     r = engine.run(bars, STRATEGIES[key], {}, s, GBP)
     assert r.trades, key
     for t in r.trades:
-        assert t.entry_i < t.exit_i or t.exit_reason.startswith("Stop")
+        assert t.entry_i < t.exit_i or t.exit_reason.startswith(("Stop", "Target"))
         assert t.risk_gbp <= 1000 * 0.01 * 1.6  # never much more than ~1% at risk (account changes over time)
 
 

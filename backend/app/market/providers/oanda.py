@@ -5,7 +5,7 @@ The host is fixed here, not configurable, so a live account can never be
 reached by the data feed. Order placement does not exist in this codebase.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 
@@ -30,11 +30,15 @@ def fetch_candles(
     tf: Timeframe,
     count: int,
     client: httpx.Client | None = None,
+    start: int | None = None,
 ) -> list[Bar]:
+    """The latest `count` candles, or (with `start`, Unix seconds) up to `count` candles from that time on."""
     if not token:
         raise ProviderError("OANDA token not set.")
     url = PRACTICE_HOST + CANDLES_PATH.format(instrument=symbol.provider_symbol)
-    params = {"granularity": tf.oanda, "count": min(count, 5000), "price": "M"}
+    params: dict = {"granularity": tf.oanda, "count": min(count, 5000), "price": "M"}
+    if start is not None:
+        params["from"] = datetime.fromtimestamp(start, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     headers = {"Authorization": f"Bearer {token}", "Accept-Datetime-Format": "RFC3339"}
     own_client = client is None
     client = client or safe_client()

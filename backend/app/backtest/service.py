@@ -93,6 +93,13 @@ def run(db: Session, req: Request) -> dict:
         warnings.append({"level": "caution", "text": (
             f"Only {len(bars)} candles of history, too few for indicators that look back 200 candles. "
             "Try the weekly timeframe, which has much longer history.")})
+    if strategy.intraday_only and tf.seconds > 900:
+        warnings.insert(0, {"level": "stop", "text": (
+            f"{strategy.name} only trades on 1 to 15-minute candles. Try the {strategy.suggested_timeframe or '5m'} timeframe.")})
+    elif strategy.intraday_only:
+        warnings.append({"level": "info", "text": (
+            "Scalping test: costs use typical spreads. Real spreads widen at the open, around news and late at night, "
+            "and real fills can lag on fast moves, so treat a thin profit here as a loss.")})
     if not strategy.benchmark:
         warnings.append({"level": "info", "text": "Buy and hold is shown without leverage or overnight financing: simply owning the market."})
     if direction == "both" and mode == "cash":

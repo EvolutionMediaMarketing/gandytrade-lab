@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import type { Time } from "lightweight-charts";
 
-const TIMEFRAMES = ["1h", "4h", "1d", "1w"];
+const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"];
 const YEARS = [
   { v: 0, label: "All" }, { v: 1, label: "1 yr" }, { v: 3, label: "3 yrs" }, { v: 5, label: "5 yrs" }, { v: 10, label: "10 yrs" },
 ];
@@ -120,6 +120,12 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
   const defaults = info?.defaultCosts[assetClass]?.[mode];
   const params = form.params[form.strategy] ?? {};
   const update = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
+  // Arriving with a scalping strategy on a long timeframe (e.g. from Learn): use the one it's built for.
+  useEffect(() => {
+    if (strategy?.intradayOnly && !["1m", "5m", "15m"].includes(form.timeframe)) {
+      setForm((f) => ({ ...f, timeframe: strategy.suggestedTimeframe || "5m" }));
+    }
+  }, [strategy, form.timeframe]);
 
   const run = useCallback(() => {
     if (!strategy) return;
@@ -209,11 +215,22 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
 
         <label className="form-row">
           <span className="field-label">Strategy</span>
-          <select value={form.strategy} onChange={(e) => update({ strategy: e.target.value })}>
+          <select value={form.strategy} onChange={(e) => {
+            // Scalping strategies only work on short candles: switch to the one they're built for.
+            const picked = info?.strategies.find((x) => x.key === e.target.value);
+            const short = ["1m", "5m", "15m"].includes(form.timeframe);
+            update(picked?.intradayOnly && !short ? { strategy: e.target.value, timeframe: picked.suggestedTimeframe || "5m" } : { strategy: e.target.value });
+          }}>
             {info?.strategies.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
           </select>
         </label>
         {strategy && <p className="muted small-text">{strategy.summary}</p>}
+        {strategy?.intradayOnly && (
+          <p className="warn caution small-text">
+            Scalping: short trades on {strategy.suggestedTimeframe || "5m"} candles, closed by the end of the session (UK time).
+            Costs take a much bigger share of each trade than on daily charts, so read the costs line closely.
+          </p>
+        )}
 
         {strategy && strategy.params.length > 0 && (
           <div className="param-grid">

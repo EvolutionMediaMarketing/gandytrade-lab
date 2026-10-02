@@ -14,7 +14,7 @@ const CHECK_LABEL: Record<ResearchCheck, string> = {
 const CHECK_SHORT: Record<ResearchCheck, string> = {
   profitable: "Profit", enoughTrades: "Trades", drawdown: "Fall", robust: "Robust", recent: "Recent",
 };
-const TF_LABEL: Record<string, string> = { "4h": "4 hours", "1d": "Daily", "1w": "Weekly" };
+const TF_LABEL: Record<string, string> = { "5m": "5 minutes", "15m": "15 minutes", "4h": "4 hours", "1d": "Daily", "1w": "Weekly" };
 
 const pct = (v: number | null | undefined, sign = true) =>
   v === null || v === undefined ? "–" : `${sign && v > 0 ? "+" : ""}${v.toFixed(1)}%`;
@@ -90,7 +90,7 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
         <div className="form-row">
           <span className="field-label">Timeframes</span>
           <div className="segmented" role="group" aria-label="Timeframes">
-            {(options?.timeframes ?? ["4h", "1d", "1w"]).map((t) => (
+            {(options?.timeframes ?? ["5m", "15m", "4h", "1d", "1w"]).map((t) => (
               <button key={t} type="button" className={timeframes.includes(t) ? "on" : ""}
                 onClick={() => setTimeframes((cur) => cur.includes(t) ? (cur.length > 1 ? cur.filter((x) => x !== t) : cur) : [...cur, t])}>
                 {TF_LABEL[t] ?? t}
@@ -112,6 +112,12 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
             })}
           </div>
         </div>
+        {timeframes.some((t) => t === "5m" || t === "15m") && (
+          <p className="muted small-text">
+            5 and 15-minute scans use months of short candles and include the three scalping strategies. They take longer:
+            allow up to half an hour for the whole basket.
+          </p>
+        )}
         {active ? (
           <div className="scan-progress">
             <p>{active.automatic ? "Weekly scan" : "Scan"} running: {active.message}</p>
@@ -275,6 +281,7 @@ function RowCard({ row: r, onBacktest, onRunOnPaper }: { row: ResearchRow; onBac
         <dt>Win rate</dt><dd>{pct(r.winRate, false)}</dd>
         <dt>Average R</dt><dd>{r.avgR?.toFixed(2) ?? "–"}</dd>
         <dt>Worst fall</dt><dd>{pct(-r.maxDrawdownPct, false)}</dd>
+        {r.costShare != null && <><dt>Costs took</dt><dd className={r.costShare > 50 ? "down" : ""}>{r.costShare}% of the profit before costs</dd></>}
         <dt>Other settings</dt><dd>{r.variantReturns.map((v) => pct(v)).join(" / ")}</dd>
         <dt>Latest third</dt><dd className={r.recentNet >= 0 ? "up" : "down"}>£{r.recentNet.toFixed(2)} from {r.recentTrades} trades</dd>
         <dt>Buy and hold</dt><dd>{pct(r.buyHoldReturnPct)}, worst fall {pct(-r.buyHoldDrawdownPct, false)}</dd>

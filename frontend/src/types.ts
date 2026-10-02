@@ -114,6 +114,8 @@ export interface StrategyInfo {
   params: StrategyParam[];
   benchmark: boolean;
   canShort: boolean;
+  intradayOnly?: boolean;
+  suggestedTimeframe?: string;
 }
 
 export interface CostSettings {
@@ -279,7 +281,7 @@ export interface SignalSide {
   reason: string;
   evidence: { trades: number; winRate: number | null; avgR: number | null; lowSample: boolean };
   plan: null | {
-    entry: number; stop: number; units: number; riskGbp: number; valueGbp: number; note: string; stopRule: string; exitRule: string;
+    entry: number; stop: number; units: number; riskGbp: number; valueGbp: number; note: string; stopRule: string; exitRule: string; target?: number; targetRule?: string;
   };
 }
 
@@ -470,7 +472,7 @@ export interface AutoRun {
 }
 
 export interface AutoOptions {
-  strategies: { key: string; name: string; summary: string; canShort: boolean }[];
+  strategies: { key: string; name: string; summary: string; canShort: boolean; intradayOnly?: boolean; suggestedTimeframe?: string }[];
   timeframes: Record<string, string[]>;
   maxRunning: number;
 }
@@ -503,6 +505,8 @@ export interface ResearchRow {
   profitFactor: number | null;
   maxDrawdownPct: number;
   costs: number;
+  grossNet?: number;
+  costShare?: number | null;
   variantReturns: number[];
   recentTrades: number;
   recentNet: number;

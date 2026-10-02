@@ -51,7 +51,7 @@ BASKET = [
     "SPX500_USD", "NAS100_USD", "UK100_GBP", "DE30_EUR", "JP225_USD",
     "EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD",
 ]
-TIMEFRAMES = ("4h", "1d", "1w")
+TIMEFRAMES = ("5m", "15m", "4h", "1d", "1w")
 DEFAULT_TIMEFRAMES = ["1d"]
 MAX_MARKETS = 30
 MIN_TRADES = 30
@@ -62,7 +62,7 @@ BALANCE = 200.0
 WEEKLY_EVERY = timedelta(days=7)
 PASS_BUDGET_SECONDS = 20  # work per worker pass, so stop-loss checks are never held up for long
 CHECKS = ["profitable", "enoughTrades", "drawdown", "robust", "recent"]
-LEVELS = {"oversold", "exit_level"}  # thresholds, not lengths: left alone by the robustness check
+LEVELS = {"oversold", "exit_level", "rsi_level", "adx_max"}  # thresholds, not lengths: left alone by the robustness check
 
 
 class ResearchError(ValueError):
@@ -80,8 +80,11 @@ def variants(s: Strategy) -> list[dict]:
     for factor in (0.75, 1.5):
         changed = {}
         for p in s.params:
-            if p.key not in LEVELS and float(p.step).is_integer() and float(p.default).is_integer() and p.default >= 2:
-                changed[p.key] = max(p.minimum, min(p.maximum, round(p.default * factor)))
+            if p.key not in LEVELS and not p.key.endswith("_hour") and float(p.step).is_integer() and float(p.default).is_integer() and p.default >= 2:
+                step = int(p.step) or 1
+                steps = p.default * factor / step  # stay on the setting's own steps, and always move off the default
+                scaled = max(step, (math.floor(steps) if factor < 1 else math.ceil(steps)) * step)
+                changed[p.key] = max(p.minimum, min(p.maximum, scaled))
         if changed:
             out.append(s.clean_params({**base, **changed}))
     return out
@@ -96,7 +99,9 @@ def start(db: Session, user: User, markets: list[str] | None = None, timeframes:
         raise ResearchError("A scan is already running. It'll finish in a few minutes.")
     markets = list(dict.fromkeys(markets or BASKET))[:MAX_MARKETS]
     timeframes = [t for t in dict.fromkeys(timeframes or DEFAULT_TIMEFRAMES) if t in TIMEFRAMES] or DEFAULT_TIMEFRAMES
-    units = [[m, t] for m in markets for t in timeframes]
+    # One unit of work per market, timeframe and strategy, so no single step holds up the worker for long.
+    units = [[m, t, s.key] for m in markets for t in timeframes for s in strategies()
+             if not (s.intraday_only and get_timeframe(t).seconds > 900)]
     job = ResearchJob(user_id=user.id, status="queued", automatic=automatic,
                       settings={"markets": markets, "timeframes": timeframes, "balance": BALANCE, "riskPct": 1.0},
                       todo=units, total=len(units), done=0, rows=[], skipped=[], message="Waiting for the worker to start it.")
@@ -142,21 +147,31 @@ def work(db: Session, budget: float = PASS_BUDGET_SECONDS) -> bool:
     job.status = "running"
     rows, skipped, todo = list(job.rows or []), list(job.skipped or []), list(job.todo or [])
     first = True
-    while todo and (first or time.time() - started < budget):  # always at least one market per pass
+    cache: dict = {}
+    skipped_keys = {(k["market"], k["timeframe"]) for k in skipped}
+    while todo and (first or time.time() - started < budget):  # always at least one unit per pass
         first = False
-        code, tf = todo.pop(0)
+        unit = todo.pop(0)
+        code, tf = unit[0], unit[1]
+        keys = [unit[2]] if len(unit) > 2 else [x.key for x in strategies()]
         try:
-            new_rows, note = scan_market(db, code, tf)
-            rows.extend(new_rows)
-            if note:
-                skipped.append({"market": code, "timeframe": tf, "reason": note})
+            for key in keys:
+                new_rows, note = scan_unit(db, code, tf, key, cache)
+                rows.extend(new_rows)
+                if note and (code, tf) not in skipped_keys:
+                    skipped.append({"market": code, "timeframe": tf, "reason": note})
+                    skipped_keys.add((code, tf))
         except (ProviderError, ValueError) as exc:
-            skipped.append({"market": code, "timeframe": tf, "reason": str(exc)[:200]})
+            if (code, tf) not in skipped_keys:
+                skipped.append({"market": code, "timeframe": tf, "reason": str(exc)[:200]})
+                skipped_keys.add((code, tf))
         except Exception as exc:  # one market's problem never stops the scan
             log.exception("Scan of %s %s failed", code, tf)
-            skipped.append({"market": code, "timeframe": tf, "reason": f"Unexpected problem: {exc.__class__.__name__}"})
+            if (code, tf) not in skipped_keys:
+                skipped.append({"market": code, "timeframe": tf, "reason": f"Unexpected problem: {exc.__class__.__name__}"})
+                skipped_keys.add((code, tf))
         job.done = job.total - len(todo)
-        job.message = f"Tested {job.done} of {job.total} market and timeframe pairs."
+        job.message = f"Tested {job.done} of {job.total} combinations of market, timeframe and strategy."
     job.rows, job.skipped, job.todo = rows, skipped, todo
     if not todo:
         job.status = "done"
@@ -174,64 +189,96 @@ def _settings(symbol, mode: str, direction: str) -> engine.Settings:
                            costs=default_costs(symbol.asset_class, mode))
 
 
-def scan_market(db: Session, code: str, timeframe: str) -> tuple[list[dict], str]:
-    """Every strategy on one market and timeframe. Returns the result rows and a note if it was skipped."""
+def _market_data(db: Session, code: str, timeframe: str, cache: dict) -> dict:
+    """Prices, buy-and-hold and the currency converter for one market and timeframe (kept for the pass)."""
+    key = (code, timeframe)
+    if key in cache:
+        return cache[key]
+    cache.clear()  # only the market being scanned is kept in memory
     symbol = lookup(db, code)
     if symbol.provider != "oanda":
-        return [], "Only markets with OANDA data are scanned (the other free feeds allow too few requests)."
-    tf = get_timeframe(timeframe)
-    history = get_history(db, symbol, tf)
-    if history.sample:
-        return [], "Sample prices only (no data key)."
-    bars = history.bars
-    if len(bars) < 300:
-        return [], f"Only {len(bars)} candles of history: too short to judge."
-    conv = converter(db, quote_currency(symbol))
-    mode = "cfd"
-    bh_settings = replace(_settings(symbol, "cash", "long"), leverage=1.0)
-    bh_settings = replace(bh_settings, costs=replace(bh_settings.costs, financing_pct_year=0.0))
-    bh = report.metrics(engine.buy_and_hold(bars, bh_settings, conv), BALANCE)
-    cutoff = bars[0].ts + (bars[-1].ts - bars[0].ts) * (1 - RECENT_SHARE)
-    years = (bars[-1].ts - bars[0].ts) / (365.25 * 86400)
+        out = {"note": "Only markets with OANDA data are scanned (the other free feeds allow too few requests)."}
+    else:
+        tf = get_timeframe(timeframe)
+        history = get_history(db, symbol, tf)
+        bars = history.bars
+        if history.sample:
+            out = {"note": "Sample prices only (no data key)."}
+        elif len(bars) < 300:
+            out = {"note": f"Only {len(bars)} candles of history: too short to judge."}
+        else:
+            conv = converter(db, quote_currency(symbol))
+            bh_settings = replace(_settings(symbol, "cash", "long"), leverage=1.0)
+            bh_settings = replace(bh_settings, costs=replace(bh_settings.costs, financing_pct_year=0.0))
+            out = {"note": "", "symbol": symbol, "tf": tf, "bars": bars, "conv": conv,
+                   "bh": report.metrics(engine.buy_and_hold(bars, bh_settings, conv), BALANCE),
+                   "cutoff": bars[0].ts + (bars[-1].ts - bars[0].ts) * (1 - RECENT_SHARE),
+                   "years": (bars[-1].ts - bars[0].ts) / (365.25 * 86400)}
+    cache[key] = out
+    return out
 
-    rows = []
+
+def scan_market(db: Session, code: str, timeframe: str) -> tuple[list[dict], str]:
+    """Every strategy on one market and timeframe. Returns the result rows and a note if it was skipped."""
+    cache: dict = {}
+    rows: list[dict] = []
     for s in strategies():
-        directions = ["long", "both"] if s.can_short else ["long"]
-        for direction in directions:
-            settings = _settings(symbol, mode, direction)
-            params = s.clean_params({})
-            result = engine.run(bars, s, params, settings, conv)
-            m = report.metrics(result, BALANCE)
-            trades = [t for t in result.trades]
-            recent = [t for t in trades if t.exit_ts >= cutoff]
-            recent_net = sum(t.pnl_gbp for t in recent)
-            variant_nets = [report.metrics(engine.run(bars, s, v, settings, conv), BALANCE)["net"] for v in variants(s)]
-            checks = {
-                "profitable": m["net"] > 0,
-                "enoughTrades": m["trades"] >= MIN_TRADES,
-                "drawdown": m["maxDrawdownPct"] <= MAX_DRAWDOWN,
-                "robust": bool(variant_nets) and all(n > 0 for n in variant_nets),
-                "recent": len(recent) >= MIN_RECENT_TRADES and recent_net > 0,
-            }
-            avg_r = m["avgR"] or 0.0
-            ratio = m["returnPct"] / max(m["maxDrawdownPct"], 1.0)
-            bh_ratio = bh["returnPct"] / max(bh["maxDrawdownPct"], 1.0)
-            rows.append({
-                "market": symbol.code, "name": symbol.name, "assetClass": symbol.asset_class, "timeframe": tf.code,
-                "strategy": s.key, "strategyName": s.name, "direction": direction, "years": round(years, 1),
-                "returnPct": m["returnPct"], "annualPct": m["annualPct"], "trades": m["trades"],
-                "tradesPerYear": round(m["trades"] / years, 1) if years > 0 else None,
-                "winRate": m["winRate"], "avgR": m["avgR"], "profitFactor": m["profitFactor"],
-                "maxDrawdownPct": m["maxDrawdownPct"], "costs": m["costs"],
-                "variantReturns": [round(n / BALANCE * 100, 1) for n in variant_nets],
-                "recentTrades": len(recent), "recentNet": round(recent_net, 2),
-                "buyHoldReturnPct": bh["returnPct"], "buyHoldDrawdownPct": bh["maxDrawdownPct"],
-                "beatsBuyHold": bool(m["net"] > bh["net"]), "smootherThanBuyHold": bool(ratio > bh_ratio),
-                "checks": {k: bool(v) for k, v in checks.items()},
-                "passed": sum(bool(v) for v in checks.values()),
-                "score": round(avg_r * math.sqrt(m["trades"]), 2) if m["trades"] else 0.0,
-                "sample": False,
-            })
+        new, note = scan_unit(db, code, timeframe, s.key, cache)
+        if note:
+            return [], note
+        rows.extend(new)
+    return rows, ""
+
+
+def scan_unit(db: Session, code: str, timeframe: str, strategy_key: str, cache: dict) -> tuple[list[dict], str]:
+    """One strategy (both directions) on one market and timeframe."""
+    data = _market_data(db, code, timeframe, cache)
+    if data["note"]:
+        return [], data["note"]
+    s = STRATEGIES[strategy_key]
+    symbol, tf, bars, conv, bh = data["symbol"], data["tf"], data["bars"], data["conv"], data["bh"]
+    if s.intraday_only and tf.seconds > 900:
+        return [], ""
+    cutoff, years = data["cutoff"], data["years"]
+    mode = "cfd"
+    rows = []
+    directions = ["long", "both"] if s.can_short else ["long"]
+    for direction in directions:
+        settings = _settings(symbol, mode, direction)
+        params = s.clean_params({})
+        result = engine.run(bars, s, params, settings, conv)
+        m = report.metrics(result, BALANCE)
+        trades = [t for t in result.trades]
+        recent = [t for t in trades if t.exit_ts >= cutoff]
+        recent_net = sum(t.pnl_gbp for t in recent)
+        variant_nets = [report.metrics(engine.run(bars, s, v, settings, conv), BALANCE)["net"] for v in variants(s)]
+        checks = {
+            "profitable": m["net"] > 0,
+            "enoughTrades": m["trades"] >= MIN_TRADES,
+            "drawdown": m["maxDrawdownPct"] <= MAX_DRAWDOWN,
+            "robust": bool(variant_nets) and all(n > 0 for n in variant_nets),
+            "recent": len(recent) >= MIN_RECENT_TRADES and recent_net > 0,
+        }
+        avg_r = m["avgR"] or 0.0
+        ratio = m["returnPct"] / max(m["maxDrawdownPct"], 1.0)
+        bh_ratio = bh["returnPct"] / max(bh["maxDrawdownPct"], 1.0)
+        rows.append({
+            "market": symbol.code, "name": symbol.name, "assetClass": symbol.asset_class, "timeframe": tf.code,
+            "strategy": s.key, "strategyName": s.name, "direction": direction, "years": round(years, 1),
+            "returnPct": m["returnPct"], "annualPct": m["annualPct"], "trades": m["trades"],
+            "tradesPerYear": round(m["trades"] / years, 1) if years > 0 else None,
+            "winRate": m["winRate"], "avgR": m["avgR"], "profitFactor": m["profitFactor"],
+            "maxDrawdownPct": m["maxDrawdownPct"], "costs": m["costs"], "grossNet": m["grossNet"],
+            "costShare": round(m["costs"] / m["grossNet"] * 100) if m["grossNet"] > 0 else None,
+            "variantReturns": [round(n / BALANCE * 100, 1) for n in variant_nets],
+            "recentTrades": len(recent), "recentNet": round(recent_net, 2),
+            "buyHoldReturnPct": bh["returnPct"], "buyHoldDrawdownPct": bh["maxDrawdownPct"],
+            "beatsBuyHold": bool(m["net"] > bh["net"]), "smootherThanBuyHold": bool(ratio > bh_ratio),
+            "checks": {k: bool(v) for k, v in checks.items()},
+            "passed": sum(bool(v) for v in checks.values()),
+            "score": round(avg_r * math.sqrt(m["trades"]), 2) if m["trades"] else 0.0,
+            "sample": False,
+        })
     return rows, ""
 
 

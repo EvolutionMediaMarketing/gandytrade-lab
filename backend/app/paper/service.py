@@ -277,7 +277,10 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
         raise PaperError("The stop-loss is on the wrong side of the current price. "
                          f"The price is now about {q.mid:.{symbol.precision}f}.")
     if target is not None and (target - fill) * side <= 0:
-        raise PaperError("The target is on the wrong side of the current price.")
+        if source == "auto":
+            target = None  # as in the backtester: the exit rule manages the trade instead
+        else:
+            raise PaperError("The target is on the wrong side of the current price.")
 
     rate = conv.rate(time.time())
     risk = RiskSettings(acct.risk_pct, acct.daily_loss_pct, acct.max_drawdown_pct).cleaned()
