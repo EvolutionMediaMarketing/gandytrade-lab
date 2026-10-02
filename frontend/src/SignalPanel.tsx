@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { money } from "./BacktestPage";
+import type { TradePlan } from "./PlanZones";
 import type { SignalCard, SignalSide, SignalsResponse } from "./types";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -29,10 +30,11 @@ interface Props {
   precision: number;
   onBacktest: (strategy: string) => void;
   onAuthError: (err: unknown) => void;
+  onShowPlan: (plan: TradePlan) => void;
 }
 
 /** What each strategy's rules say about the chart on screen: rule checks and past results, not advice. */
-export default function SignalPanel({ symbol, timeframe, lastBarTime, precision, onBacktest, onAuthError }: Props) {
+export default function SignalPanel({ symbol, timeframe, lastBarTime, precision, onBacktest, onAuthError, onShowPlan }: Props) {
   const [settings, setSettings] = useState(loadSettings);
   const [data, setData] = useState<SignalsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export default function SignalPanel({ symbol, timeframe, lastBarTime, precision,
           <ul className="signal-list">
             {data.strategies.map((c) => (
               <Card key={c.key} card={c} precision={precision} expanded={open === c.key}
-                onToggle={() => setOpen(open === c.key ? null : c.key)} onBacktest={() => onBacktest(c.key)} />
+                onToggle={() => setOpen(open === c.key ? null : c.key)} onBacktest={() => onBacktest(c.key)} onShowPlan={onShowPlan} />
             ))}
           </ul>
           <p className="muted small-text">
@@ -117,8 +119,9 @@ export default function SignalPanel({ symbol, timeframe, lastBarTime, precision,
   );
 }
 
-function Card({ card, precision, expanded, onToggle, onBacktest }: {
+function Card({ card, precision, expanded, onToggle, onBacktest, onShowPlan }: {
   card: SignalCard; precision: number; expanded: boolean; onToggle: () => void; onBacktest: () => void;
+  onShowPlan: (plan: TradePlan) => void;
 }) {
   const s = card.best;
   const h = card.history;
@@ -144,7 +147,7 @@ function Card({ card, precision, expanded, onToggle, onBacktest }: {
             </p>
           )}
           {card.note && <p className="warn stop">{card.note}</p>}
-          {card.sides.map((side) => <SideView key={side.side} side={side} precision={precision} showSide={card.sides.length > 1} />)}
+          {card.sides.map((side) => <SideView key={side.side} side={side} precision={precision} showSide={card.sides.length > 1} onShowPlan={onShowPlan} />)}
           <p className="evidence">
             <b>On this market and timeframe:</b> {h.trades} trades over {h.years} years, {h.returnPct > 0 ? "+" : ""}{h.returnPct.toFixed(1)}% after costs
             {h.winRate !== null && <>, {h.winRate.toFixed(0)}% won</>}, worst fall {h.maxDrawdownPct.toFixed(0)}%.{" "}
@@ -158,7 +161,9 @@ function Card({ card, precision, expanded, onToggle, onBacktest }: {
   );
 }
 
-function SideView({ side, precision, showSide }: { side: SignalSide; precision: number; showSide: boolean }) {
+function SideView({ side, precision, showSide, onShowPlan }: {
+  side: SignalSide; precision: number; showSide: boolean; onShowPlan: (plan: TradePlan) => void;
+}) {
   const e = side.evidence;
   return (
     <div className="side-view">
@@ -185,6 +190,11 @@ function SideView({ side, precision, showSide }: { side: SignalSide; precision: 
         </dl>
       )}
       {side.plan?.note && <p className="muted small-text">{side.plan.note}</p>}
+      {side.plan && (
+        <button type="button" className="ghost small" onClick={() => onShowPlan({ entry: side.plan!.entry, stop: side.plan!.stop, target: null })}>
+          Show this plan on the chart
+        </button>
+      )}
     </div>
   );
 }

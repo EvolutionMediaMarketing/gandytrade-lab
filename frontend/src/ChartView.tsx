@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AreaSeries,
   BarSeries,
@@ -7,6 +7,7 @@ import {
   CrosshairMode,
   HistogramSeries,
   IChartApi,
+  IPriceLine,
   ISeriesApi,
   LineSeries,
   LineStyle,
@@ -18,6 +19,7 @@ import {
   createSeriesMarkers,
 } from "lightweight-charts";
 import { BandFill } from "./BandFill";
+import { PlanZones, TradePlan } from "./PlanZones";
 import type { BarData, ChartData } from "./types";
 
 const C = {
@@ -90,9 +92,62 @@ function crosshairLabel(seconds: number, timeframe: string): string {
 
 export type ChartMarker = SeriesMarker<Time>;
 
-export default function ChartView({ data, markers, focusTime }: { data: ChartData; markers?: ChartMarker[]; focusTime?: number }) {
+type PlanKey = "entry" | "stop" | "target";
+const PLAN_STYLE: Record<PlanKey, { color: string; title: string }> = {
+  entry: { color: "#60a5fa", title: "Entry" },
+  stop: { color: "#f87171", title: "Stop-loss" },
+  target: { color: "#34d399", title: "Target" },
+};
+
+interface ChartViewProps {
+  data: ChartData;
+  markers?: ChartMarker[];
+  focusTime?: number;
+  /** A trade plan drawn as draggable lines. */
+  plan?: TradePlan | null;
+  onPlanChange?: (plan: TradePlan) => void;
+}
+
+export default function ChartView({ data, markers, focusTime, plan, onPlanChange }: ChartViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const mainRef = useRef<ISeriesApi<SeriesType> | null>(null);
+  const zonesRef = useRef<PlanZones | null>(null);
+  const linesRef = useRef<Partial<Record<PlanKey, IPriceLine>>>({});
+  const planRef = useRef<TradePlan | null | undefined>(plan);
+  const onPlanChangeRef = useRef(onPlanChange);
+  planRef.current = plan;
+  onPlanChangeRef.current = onPlanChange;
+
+  // Draw (or remove) the plan's lines and shading on the current chart.
+  const syncPlan = useCallback(() => {
+    const main = mainRef.current;
+    const zones = zonesRef.current;
+    if (!main || !zones) return;
+    const p = planRef.current;
+    const lines = linesRef.current;
+    (Object.keys(PLAN_STYLE) as PlanKey[]).forEach((key) => {
+      const price = p ? (key === "target" ? p.target : p[key]) : null;
+      const existing = lines[key];
+      if (price === null || price === undefined || !Number.isFinite(price)) {
+        if (existing) main.removePriceLine(existing);
+        delete lines[key];
+        return;
+      }
+      if (existing) existing.applyOptions({ price });
+      else lines[key] = main.createPriceLine({
+        price, color: PLAN_STYLE[key].color, lineWidth: 2, lineStyle: key === "entry" ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: true, title: PLAN_STYLE[key].title,
+      });
+    });
+    // Shade the plan over the last 40 candles and on to the right edge, so it's easy to see.
+    const n = data.bars.length;
+    zones.setPlan(p ?? null, n ? data.bars[Math.max(0, n - 40)].time : null);
+  }, [data]);
+
+  useEffect(() => {
+    syncPlan();
+  }, [plan, syncPlan]);
   // Remembers where you'd scrolled and zoomed, so an automatic refresh doesn't reset the view.
   const viewRef = useRef<{ key: string; fromEnd: number; toEnd: number } | null>(null);
   const [legend, setLegend] = useState<BarData | null>(null);
@@ -146,6 +201,13 @@ export default function ChartView({ data, markers, focusTime }: { data: ChartDat
       });
       main.setData([...ohlc, ...future]);
     }
+
+    // Trade plan: shaded zones plus draggable lines (drawn by syncPlan).
+    const zones = new PlanZones();
+    main.attachPrimitive(zones);
+    mainRef.current = main;
+    zonesRef.current = zones;
+    linesRef.current = {};
 
     // Trade markers from a backtest (buy, sell, exit), sorted by time as the library requires.
     if (markers && markers.length) {
@@ -268,12 +330,77 @@ export default function ChartView({ data, markers, focusTime }: { data: ChartDat
       setLegend((t !== undefined && byTime.get(t)) || data.bars[n - 1] || null);
     });
 
+    syncPlan();
+
+    // Drag the plan's lines up and down. Grabbing within 7 pixels of a line picks it up.
+    const el = host.current;
+    let dragging: PlanKey | null = null;
+    const step = Math.pow(10, -precision);
+    const near = (y: number): PlanKey | null => {
+      const p = planRef.current;
+      if (!p || !onPlanChangeRef.current) return null;
+      let best: PlanKey | null = null;
+      let bestDist = 7;
+      (["stop", "target", "entry"] as PlanKey[]).forEach((key) => {
+        const price = key === "target" ? p.target : p[key];
+        if (price === null) return;
+        const yy = main.priceToCoordinate(price);
+        if (yy !== null && Math.abs(yy - y) <= bestDist) {
+          best = key;
+          bestDist = Math.abs(yy - y);
+        }
+      });
+      return best;
+    };
+    const localY = (e: PointerEvent) => e.clientY - el.getBoundingClientRect().top;
+    const onDown = (e: PointerEvent) => {
+      const key = near(localY(e));
+      if (!key) return;
+      dragging = key;
+      chart.applyOptions({ handleScroll: false, handleScale: false });
+      el.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onMove = (e: PointerEvent) => {
+      const y = localY(e);
+      if (!dragging) {
+        el.style.cursor = near(y) ? "ns-resize" : "";
+        return;
+      }
+      const price = main.coordinateToPrice(y);
+      const p = planRef.current;
+      if (price === null || !p || price <= 0) return;
+      const next = { ...p, [dragging]: Number((Math.round(price / step) * step).toFixed(precision)) };
+      planRef.current = next;
+      onPlanChangeRef.current?.(next); // the lines redraw from the new plan, so they always match the numbers
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = null;
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    };
+    el.addEventListener("pointerdown", onDown, { capture: true });
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+
     return () => {
+      el.removeEventListener("pointerdown", onDown, { capture: true });
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      el.style.cursor = "";
+      mainRef.current = null;
+      zonesRef.current = null;
       const range = chart.timeScale().getVisibleLogicalRange();
       if (range && n > 0) viewRef.current = { key: viewKey, fromEnd: n - range.from, toEnd: n - range.to };
       chart.remove();
       chartRef.current = null;
     };
+    // syncPlan is stable per data set; plan changes are handled by their own effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, markers, focusTime]);
 
   const p = data.symbol.precision;

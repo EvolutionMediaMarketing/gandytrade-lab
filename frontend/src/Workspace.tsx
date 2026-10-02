@@ -4,7 +4,9 @@ import ChartView from "./ChartView";
 import BacktestPage from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
+import type { TradePlan } from "./PlanZones";
 import SignalPanel from "./SignalPanel";
+import TradePlanner from "./TradePlanner";
 import ToolsPage from "./ToolsPage";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
 
@@ -98,7 +100,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [panel, setPanel] = useState<"" | "indicators" | "signals">("");
+  const [panel, setPanel] = useState<"" | "indicators" | "signals" | "plan">("");
+  const [plan, setPlan] = useState<TradePlan | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const inFlight = useRef(false);
   // When you last touched the page, and when we last asked the server for data. An automatic
@@ -191,6 +194,31 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   }, [prefs.autoRefresh, prefs.timeframe, load, page]);
 
   const update = (patch: Partial<Prefs>) => setPrefs((p) => ({ ...p, ...patch }));
+
+  // A fresh plan: entry at the latest price, stop 2 × the daily ATR away, target at twice the risk (2R).
+  const lastClose = data && data.symbol.code === prefs.symbol && data.bars.length ? data.bars[data.bars.length - 1].close : null;
+  const lastCloseRef = useRef<number | null>(lastClose);
+  lastCloseRef.current = lastClose;
+  const startPlan = useCallback(() => {
+    api
+      .quote(prefs.symbol)
+      .then((q) => {
+        const entry = lastCloseRef.current ?? q.price; // the price you can see on the chart
+        const distance = q.dailyAtr ? 2 * q.dailyAtr : entry * 0.02;
+        const round = (v: number) => Number(v.toFixed(q.symbol.precision));
+        setPlan({ entry: round(entry), stop: round(entry - distance), target: round(entry + 2 * distance) });
+      })
+      .catch(handleAuth);
+  }, [prefs.symbol, handleAuth]);
+
+  // A new market means a new plan.
+  useEffect(() => {
+    setPlan(null);
+  }, [prefs.symbol]);
+
+  useEffect(() => {
+    if (panel === "plan" && plan === null) startPlan();
+  }, [panel, plan, startPlan]);
 
   function toggleIndicator(def: IndicatorDef) {
     const active = prefs.indicators.find((i) => i.type === def.type);
@@ -289,6 +317,10 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           aria-expanded={panel === "indicators"}>
           Indicators ({prefs.indicators.length})
         </button>
+        <button className={panel === "plan" ? "secondary on" : "secondary"} onClick={() => setPanel((p) => (p === "plan" ? "" : "plan"))}
+          aria-expanded={panel === "plan"} title="Draw a trade on the chart and see its size, risk and reward">
+          Plan a trade
+        </button>
         <button className={panel === "signals" ? "secondary on" : "secondary"} onClick={() => setPanel((p) => (p === "signals" ? "" : "signals"))}
           aria-expanded={panel === "signals"} title="What each strategy's rules say about this chart">
           Signals
@@ -318,13 +350,21 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
       <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
-          {data && data.bars.length > 0 ? <ChartView data={data} /> : !error && <div className="splash">Loading chart…</div>}
+          {data && data.bars.length > 0 ? (
+            <ChartView data={data} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan} />
+          ) : !error && <div className="splash">Loading chart…</div>}
         </section>
 
+        {panel === "plan" && data && (
+          <aside className="panel" aria-label="Trade planner">
+            <TradePlanner symbol={data.symbol} plan={plan} onPlanChange={setPlan} onStartFresh={startPlan} onAuthError={handleAuth} />
+          </aside>
+        )}
         {panel === "signals" && (
           <aside className="panel" aria-label="Signal assistant">
             <SignalPanel symbol={prefs.symbol} timeframe={prefs.timeframe} lastBarTime={data?.bars[data.bars.length - 1]?.time}
               precision={data?.symbol.precision ?? 5} onAuthError={handleAuth}
+              onShowPlan={(p) => { setPlan(p); setPanel("plan"); }}
               onBacktest={(strategy) => {
                 setBacktestInit({ strategy, symbol: prefs.symbol, timeframe: ["1h", "4h", "1d", "1w"].includes(prefs.timeframe) ? prefs.timeframe : "1d" });
                 go("backtest");
