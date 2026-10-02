@@ -109,3 +109,5 @@ class FetchState(Base):
     symbol: Mapped[str] = mapped_column(String(32))
     timeframe: Mapped[str] = mapped_column(String(8))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # When the long history (up to 5,000 bars) was last downloaded for backtests.
+    deep_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

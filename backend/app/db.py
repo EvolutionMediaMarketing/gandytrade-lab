@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -60,10 +61,28 @@ def wait_for_database(timeout_seconds: int = 60) -> None:
             time.sleep(2)
 
 
+MIGRATIONS = Path(__file__).resolve().parent / "migrations"
+
+
+def alembic_config():
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS))
+    return cfg
+
+
 def init_db() -> None:
+    """Bring the database up to date. Each change to the tables is a numbered migration in
+    app/migrations/versions; the server's update script backs the database up first."""
+    from alembic import command
+
     from . import models  # noqa: F401  (register tables)
 
-    Base.metadata.create_all(get_engine())
+    cfg = alembic_config()
+    with get_engine().begin() as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "head")
 
 
 def get_session() -> Iterator[Session]:
