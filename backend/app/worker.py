@@ -1,4 +1,5 @@
-"""Background worker: watches open paper trades and closes them at their stop-loss or target.
+"""Background worker: watches open paper trades and closes them at their stop-loss or target,
+and runs automatic paper trading (strategies trading paper accounts by their own rules).
 
 Runs in its own container (`gandytrade-worker`) with the same code and database as the app:
 
@@ -21,6 +22,7 @@ from .logsafe import install_log_redaction
 from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
+from .paper import auto
 from .paper import service as paper
 
 log = logging.getLogger("gandytrade.worker")
@@ -35,7 +37,7 @@ def _handle_stop(*_args) -> None:
     _stop = True
 
 
-def run_once(last_checked: dict[str, float]) -> dict:
+def run_once(last_checked: dict[str, float], last_looked: dict | None = None) -> dict:
     """One pass over every open paper trade. Returns counts, for the log and tests."""
     db = new_session()
     stats = {"checked": 0, "closed": 0, "errors": 0}
@@ -62,6 +64,10 @@ def run_once(last_checked: dict[str, float]) -> dict:
                 stats["errors"] += 1
                 continue
             for t in group:
+                # Lock and re-read: you may have closed it from the browser a moment ago.
+                t = db.get(PaperTrade, t.id, with_for_update=True, populate_existing=True)
+                if t is None or t.status != "open":
+                    continue
                 acct = db.get(PaperAccount, t.account_id)
                 stats["checked"] += 1
                 if paper.check_trade(db, acct, t, q):
@@ -69,6 +75,13 @@ def run_once(last_checked: dict[str, float]) -> dict:
                     log.info("Closed paper trade %s on %s: %s", t.id, code, t.exit_reason)
                 touched_accounts.add(acct.id)
             db.commit()
+        # Automatic runs act on newly finished candles (after stops above, as in the backtester).
+        try:
+            touched_accounts |= auto.run_due(db, last_looked if last_looked is not None else {}, now)
+        except Exception:
+            db.rollback()
+            log.exception("Automatic trading pass failed")
+            stats["errors"] += 1
         # Keep each account's high point, day-start figure and drawdown limit up to date.
         quotes: dict = {}
         for acct in list(db.scalars(select(PaperAccount).where(PaperAccount.archived.is_(False)))):
@@ -97,9 +110,10 @@ def main() -> None:
     wait_for_database()
     log.info("Paper trading worker started")
     last_checked: dict[str, float] = {}
+    last_looked: dict[int, float] = {}
     while not _stop:
         started = time.time()
-        stats = run_once(last_checked)
+        stats = run_once(last_checked, last_looked)
         if stats["closed"] or stats["errors"]:
             log.info("Pass: %s", stats)
         while not _stop and time.time() - started < LOOP_SECONDS:

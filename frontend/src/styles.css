@@ -451,3 +451,19 @@ ul.plain { margin: 0; padding-left: 18px; }
   .param-grid { grid-template-columns: 1fr; }
   .bt-chart { height: 360px; }
 }
+
+/* Automatic paper trading */
+.auto-panel .auto-run { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
+.auto-panel .auto-run.stopped { opacity: 0.7; }
+.auto-run-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.auto-msg { margin: 8px 0 2px; }
+.auto-compare { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 13px; }
+.auto-compare th, .auto-compare td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.auto-compare td.num, .auto-compare th.num { text-align: right; }
+.tag.go { color: var(--accent); border-color: var(--accent); }
+.tag.caution { color: #fbbf24; border-color: #fbbf24; }
+.tag.auto { margin-left: 6px; color: #93c5fd; border-color: #93c5fd; }
+.new-run { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; display: grid; gap: 10px; max-width: 560px; }
+.new-run h4 { margin: 0; }
+.new-run select { width: 100%; }
+@media (max-width: 640px) { .auto-compare { font-size: 12px; } .auto-compare th, .auto-compare td { padding: 4px; } }

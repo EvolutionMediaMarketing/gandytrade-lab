@@ -10,7 +10,10 @@ from ..deps import current_user
 from ..market.providers.base import ProviderError
 from ..market.directory import lookup
 from ..models import PaperAccount, PaperEvent, PaperTrade, User
+from ..paper import auto
 from ..paper import service as paper
+from ..models import AutoRun
+from ..strategies.library import STRATEGIES
 
 router = APIRouter(prefix="/api/paper", tags=["paper"])
 MOODS = {"", "calm", "confident", "unsure", "anxious", "bored", "fomo", "frustrated"}
@@ -43,7 +46,7 @@ def _trade_dict(t: PaperTrade, v: "paper.Valued | None" = None, db: Session | No
         "exitReason": t.exit_reason, "pnl": round(t.pnl_gbp, 2) if t.pnl_gbp is not None else None,
         "costs": round(t.costs_gbp, 2) if t.costs_gbp is not None else None,
         "r": round(t.pnl_gbp / t.risk_gbp, 2) if t.pnl_gbp is not None and t.risk_gbp > 0 else None,
-        "source": t.source, "strategy": t.strategy, "trend": t.trend, "reason": t.reason, "mood": t.mood,
+        "source": t.source, "strategy": t.strategy, "autoRunId": t.auto_run_id, "trend": t.trend, "reason": t.reason, "mood": t.mood,
         "notes": t.notes, "lesson": t.lesson, "ruleFlags": t.rule_flags or [],
         "ruleScore": t.rule_score if t.rule_score is not None else paper.score(t.rule_flags or []),
     }
@@ -221,3 +224,71 @@ def trade_events(trade_id: int, db: Session = Depends(get_session), user: User =
     events = db.scalars(select(PaperEvent).where(PaperEvent.trade_id == t.id).order_by(PaperEvent.id)).all()
     return {"events": [{"at": e.at.isoformat(), "kind": e.kind, "price": e.price, "mid": e.mid, "quoteTs": e.quote_ts,
                         "source": e.quote_source, "detail": e.detail} for e in events]}
+
+
+# --- Automatic paper trading -------------------------------------------------------------------
+
+def _run_dict(db: Session, run: AutoRun) -> dict:
+    s = STRATEGIES.get(run.strategy)
+    _, name = _market(db, run.symbol)
+    t = auto.open_trade_of(db, run)
+    return {
+        "id": run.id, "accountId": run.account_id, "symbol": run.symbol, "name": name, "timeframe": run.timeframe,
+        "strategy": run.strategy, "strategyName": s.name if s else run.strategy, "params": run.params or {},
+        "direction": run.direction, "status": run.status, "createdAt": run.created_at.isoformat(),
+        "lastCheckAt": run.last_check_at.isoformat() if run.last_check_at else None,
+        "lastCandle": run.last_bar_ts, "message": run.last_message, "backtest": run.backtest or {},
+        "live": auto.live_results(db, run), "openTradeId": t.id if t else None,
+    }
+
+
+@router.get("/auto/options")
+def auto_options(user: User = Depends(current_user)) -> dict:
+    return {
+        "strategies": [{"key": s.key, "name": s.name, "summary": s.summary, "canShort": s.can_short}
+                       for s in auto.automatic_strategies()],
+        "timeframes": auto.TIMEFRAMES, "maxRunning": auto.MAX_RUNNING,
+    }
+
+
+@router.get("/auto")
+def list_runs(account_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.get_account(db, user, account_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    runs = db.scalars(select(AutoRun).where(AutoRun.account_id == acct.id).order_by(AutoRun.id.desc())).all()
+    return {"runs": [_run_dict(db, r) for r in runs]}
+
+
+class NewRun(BaseModel):
+    account_id: int
+    symbol: str = Field(max_length=32)
+    timeframe: str = Field(max_length=4)
+    strategy: str = Field(max_length=40)
+    direction: str = Field("long", max_length=5)
+    params: dict = Field(default_factory=dict)
+
+
+@router.post("/auto")
+def start_run(body: NewRun, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        run = auto.create(db, user, body.account_id, body.symbol, body.timeframe, body.strategy,
+                          body.params, body.direction)
+    except (auto.AutoError, paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return _run_dict(db, run)
+
+
+class RunChange(BaseModel):
+    action: str = Field(max_length=10)  # pause | resume | stop
+    close_open: bool = False
+
+
+@router.post("/auto/{run_id}")
+def change_run(run_id: int, body: RunChange, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        run = auto.change(db, user, run_id, body.action, body.close_open)
+    except (auto.AutoError, paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return _run_dict(db, run)

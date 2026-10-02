@@ -4,7 +4,7 @@ import ChartView, { ChartMarker } from "./ChartView";
 import EquityChart from "./EquityChart";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type {
-  BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, CostSettings, StrategiesResponse, SymbolInfo,
+  BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, CostSettings, StrategiesResponse, SymbolInfo, AutoPrefill,
 } from "./types";
 import type { Time } from "lightweight-charts";
 
@@ -66,9 +66,10 @@ interface Props {
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   onAuthError: (err: unknown) => void;
   initial?: { symbol?: string; strategy?: string; timeframe?: string };
+  onRunOnPaper?: (p: AutoPrefill) => void;
 }
 
-export default function BacktestPage({ catalogue, favourites, onToggleFavourite, onAuthError, initial }: Props) {
+export default function BacktestPage({ catalogue, favourites, onToggleFavourite, onAuthError, initial, onRunOnPaper }: Props) {
   const [info, setInfo] = useState<StrategiesResponse | null>(null);
   const [form, setForm] = useState<Form>(() => loadForm(initial));
   const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | undefined>();
@@ -325,6 +326,13 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
               <h2>{result.strategy.name} · {displayCode(result.symbol.code)} <span className="muted">{result.symbol.name} · {result.timeframe}</span></h2>
               <p className="muted small-text">{date(result.from)} to {date(result.to)} · {result.candles.toLocaleString("en-GB")} candles · {result.assumptions.modeLabel}</p>
               <p className="headline">{result.headline}</p>
+              {onRunOnPaper && !result.sample && !["buy_hold", "support_resistance"].includes(result.strategy.key) && (
+                <button type="button" className="small" title="Let these rules trade a paper account on live prices, to see if the backtest holds up"
+                  onClick={() => onRunOnPaper({ symbol: result.symbol.code, timeframe: result.timeframe, strategy: result.strategy.key,
+                    params: result.strategy.params as Record<string, number>, direction: result.assumptions.direction })}>
+                  Run these rules automatically on paper
+                </button>
+              )}
             </header>
 
             {result.warnings.length > 0 && (

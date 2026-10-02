@@ -11,7 +11,7 @@ import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -85,6 +85,7 @@ function pageFromHash(): Page {
 
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [page, setPage] = useState<Page>(pageFromHash);
+  const [autoPrefill, setAutoPrefill] = useState<AutoPrefill | null>(null);
   const [backtestInit, setBacktestInit] = useState<{ symbol?: string; strategy?: string; timeframe?: string } | undefined>();
 
   useEffect(() => {
@@ -285,10 +286,13 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
       {page === "backtest" && (
         <BacktestPage key={JSON.stringify(backtestInit ?? {})} catalogue={catalogue} favourites={favourites}
-          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit} />
+          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit}
+          onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
       )}
       {page === "paper" && (
-        <PaperPage onAuthError={handleAuth} onOpenChart={(symbol) => { update({ symbol }); go("charts"); }} />
+        <PaperPage onAuthError={handleAuth} onOpenChart={(symbol) => { update({ symbol }); go("charts"); }}
+          catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite}
+          autoPrefill={autoPrefill} onPrefillUsed={() => setAutoPrefill(null)} />
       )}
       {page === "tools" && (
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />

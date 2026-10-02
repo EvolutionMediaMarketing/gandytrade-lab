@@ -333,6 +333,7 @@ export interface PaperTrade {
   r: number | null;
   source: string;
   strategy: string;
+  autoRunId: number | null;
   trend: string;
   reason: string;
   mood: string;
@@ -441,4 +442,41 @@ export interface LivePrice {
   ask: number;
   mid: number;
   time: number;
+}
+
+export interface AutoRun {
+  id: number;
+  accountId: number;
+  symbol: string;
+  name: string;
+  timeframe: string;
+  strategy: string;
+  strategyName: string;
+  params: Record<string, number>;
+  direction: "long" | "both";
+  status: "running" | "paused" | "stopped";
+  createdAt: string;
+  lastCheckAt: string | null;
+  lastCandle: number;
+  message: string;
+  backtest: {
+    returnPct?: number; annualPct?: number | null; trades?: number; winRate?: number | null; avgR?: number | null;
+    profitFactor?: number | null; maxDrawdownPct?: number; years?: number; buyHoldReturnPct?: number; tradesPerYear?: number | null;
+  };
+  live: { trades: number; open: number; net: number; winRate: number | null; avgR: number | null; costs: number };
+  openTradeId: number | null;
+}
+
+export interface AutoOptions {
+  strategies: { key: string; name: string; summary: string; canShort: boolean }[];
+  timeframes: Record<string, string[]>;
+  maxRunning: number;
+}
+
+export interface AutoPrefill {
+  symbol: string;
+  timeframe: string;
+  strategy: string;
+  params?: Record<string, number>;
+  direction?: string;
 }

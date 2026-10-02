@@ -241,14 +241,24 @@ def checklist_problems(req: OrderRequest) -> list[str]:
 
 
 def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
+    """A trade you place yourself: the pre-trade checklist must be complete."""
     problems = checklist_problems(req)
     if problems:
         raise PaperError("Pre-trade checklist incomplete: " + " ".join(problems))
-    if req.side not in (1, -1):
-        raise PaperError("Choose buy or short.")
     acct = get_account(db, user, req.account_id)
-    symbol = lookup(db, req.symbol)
-    if acct.mode == "cash" and req.side < 0:
+    return place(db, acct, req.symbol, req.side, req.stop, req.target, req.timeframe,
+                 trend=req.trend, reason=req.reason, mood=req.mood)
+
+
+def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, target: float | None, timeframe: str, *,
+          trend: str = "", reason: str = "", mood: str = "", source: str = "manual", strategy: str = "",
+          auto_run_id: int | None = None) -> PaperTrade:
+    """Open a paper trade. Manual and automatic trades go through exactly the same safeguards:
+    the account's pause and daily loss limit, fresh prices, risk sizing, buying power and the open-risk limit."""
+    if side not in (1, -1):
+        raise PaperError("Choose buy or short.")
+    symbol = lookup(db, code)
+    if acct.mode == "cash" and side < 0:
         raise PaperError("This account holds real shares, so it can only buy. Use a CFD / spread bet account to go short.")
 
     state = account_state(db, acct)
@@ -261,18 +271,18 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
     q = latest_quote(db, symbol)
     check_fresh(q, symbol)
     book, conv = _book(db, symbol, acct.mode)
-    buying = req.side > 0
+    buying = side > 0
     fill = book.fill(q.mid, buying)
-    if (fill - req.stop) * req.side <= 0:
+    if (fill - stop) * side <= 0:
         raise PaperError("The stop-loss is on the wrong side of the current price. "
                          f"The price is now about {q.mid:.{symbol.precision}f}.")
-    if req.target is not None and (req.target - fill) * req.side <= 0:
+    if target is not None and (target - fill) * side <= 0:
         raise PaperError("The target is on the wrong side of the current price.")
 
     rate = conv.rate(time.time())
     risk = RiskSettings(acct.risk_pct, acct.daily_loss_pct, acct.max_drawdown_pct).cleaned()
     cap = leverage_cap(symbol.code, symbol.asset_class, acct.mode)
-    d = size_trade(equity_gbp=state["equity"], entry=fill, stop=req.stop, side=req.side, per_gbp=rate,
+    d = size_trade(equity_gbp=state["equity"], entry=fill, stop=stop, side=side, per_gbp=rate,
                    cap=1e9, settings=risk)
     if not d.ok:
         raise PaperError(d.reason)
@@ -291,7 +301,7 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
     already = open_risk(db, acct)
     limit = open_risk_limit(acct, state["equity"])
     room = limit - already
-    loss_per_unit = abs(fill - req.stop) / rate
+    loss_per_unit = abs(fill - stop) / rate
     if room < max(0.01, 0.1 * d.units * loss_per_unit):
         raise PaperError(
             f"Open-risk limit reached: £{already:,.2f} is already at risk across your open trades, and this account "
@@ -303,24 +313,25 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
                 f"left room for £{room:,.2f} of risk.")
 
     flags = []
-    if (req.side > 0 and req.trend == "down") or (req.side < 0 and req.trend == "up"):
-        flags.append("Traded against the trend you identified")
-    last_loss = db.scalar(select(PaperTrade).where(PaperTrade.account_id == acct.id, PaperTrade.status == "closed",
-                                                   PaperTrade.pnl_gbp < 0).order_by(PaperTrade.exit_time.desc()).limit(1))
-    if last_loss is not None and last_loss.exit_time is not None:
-        closed = last_loss.exit_time if last_loss.exit_time.tzinfo else last_loss.exit_time.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) - closed < timedelta(minutes=REVENGE_MINUTES):
-            flags.append(f"Opened within {REVENGE_MINUTES} minutes of a losing trade")
+    if source == "manual":
+        if (side > 0 and trend == "down") or (side < 0 and trend == "up"):
+            flags.append("Traded against the trend you identified")
+        last_loss = db.scalar(select(PaperTrade).where(PaperTrade.account_id == acct.id, PaperTrade.status == "closed",
+                                                       PaperTrade.pnl_gbp < 0).order_by(PaperTrade.exit_time.desc()).limit(1))
+        if last_loss is not None and last_loss.exit_time is not None:
+            closed = last_loss.exit_time if last_loss.exit_time.tzinfo else last_loss.exit_time.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - closed < timedelta(minutes=REVENGE_MINUTES):
+                flags.append(f"Opened within {REVENGE_MINUTES} minutes of a losing trade")
 
     fees = book.order_fees(units, fill, int(time.time()), buying, opening=True)
     acct.cash -= fees
-    risk_gbp = units * abs(fill - req.stop) / rate
+    risk_gbp = units * abs(fill - stop) / rate
     t = PaperTrade(
-        account_id=acct.id, symbol=symbol.code, timeframe=req.timeframe[:8], side=req.side, status="open",
+        account_id=acct.id, symbol=symbol.code, timeframe=timeframe[:8], side=side, status="open",
         units=units, entry_price=fill, entry_mid=q.mid, entry_quote_ts=q.ts, entry_rate=rate, entry_fees=fees,
-        stop=req.stop, initial_stop=req.stop, target=req.target, risk_gbp=risk_gbp, exit_reason="",
-        last_checked_ts=_bar_index_ts(q), source="manual", strategy="", trend=req.trend, reason=req.reason.strip()[:300],
-        mood=req.mood[:20], notes="", lesson="", rule_flags=flags, rule_score=None,
+        stop=stop, initial_stop=stop, target=target, risk_gbp=risk_gbp, exit_reason="",
+        last_checked_ts=_bar_index_ts(q), source=source, strategy=strategy[:40], trend=trend, reason=reason.strip()[:300],
+        mood=mood[:20], notes="", lesson="", rule_flags=flags, rule_score=None, auto_run_id=auto_run_id,
     )
     db.add(t)
     db.flush()
@@ -415,6 +426,8 @@ def close(db: Session, acct: PaperAccount, t: PaperTrade, level: float, quote_ts
 
 def close_now(db: Session, user: User, trade_id: int) -> PaperTrade:
     t, acct = get_trade(db, user, trade_id)
+    # Lock and re-read: the background worker may be closing it at this very moment.
+    t = db.get(PaperTrade, t.id, with_for_update=True, populate_existing=True)
     if t.status != "open":
         raise PaperError("This trade is already closed.")
     symbol = lookup(db, t.symbol)

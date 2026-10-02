@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AutoOptions, AutoRun, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -91,5 +91,12 @@ export const api = {
   quote: (symbol: string) => request<Quote>(`/api/tools/quote?${new URLSearchParams({ symbol })}`),
   positionSize: (body: { symbol: string; balance: number; risk_pct: number; entry: number; stop: number; mode: string }) =>
     request<PositionSize>("/api/tools/position-size", { method: "POST", body: JSON.stringify(body) }),
+  autoOptions: () => request<AutoOptions>("/api/paper/auto/options"),
+  autoRuns: (accountId: number, background = false) =>
+    request<{ runs: AutoRun[] }>(`/api/paper/auto?${new URLSearchParams({ account_id: String(accountId) })}`, {}, background),
+  startAutoRun: (body: { account_id: number; symbol: string; timeframe: string; strategy: string; direction: string; params?: Record<string, number> }) =>
+    request<AutoRun>("/api/paper/auto", { method: "POST", body: JSON.stringify(body) }),
+  changeAutoRun: (id: number, action: "pause" | "resume" | "stop", closeOpen = false) =>
+    request<AutoRun>(`/api/paper/auto/${id}`, { method: "POST", body: JSON.stringify({ action, close_open: closeOpen }) }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
-import type { PaperAccount, PaperEvent, PaperTrade } from "./types";
+import AutoPanel from "./AutoPanel";
+import type { AutoPrefill, Catalogue, PaperAccount, PaperEvent, PaperTrade, SymbolInfo } from "./types";
 import { useLivePrices } from "./useLivePrices";
 
 const REFRESH_MS = 30_000;
@@ -14,7 +15,17 @@ const when = (iso: string | null) =>
 const fmt = (v: number | null | undefined, p = 5) => (v === null || v === undefined ? "–" : v.toFixed(Math.min(6, Math.max(2, p))));
 const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
-export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (err: unknown) => void; onOpenChart: (symbol: string) => void }) {
+interface Props {
+  onAuthError: (err: unknown) => void;
+  onOpenChart: (symbol: string) => void;
+  catalogue: Catalogue | null;
+  favourites: SymbolInfo[];
+  onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
+  autoPrefill: AutoPrefill | null;
+  onPrefillUsed: () => void;
+}
+
+export default function PaperPage({ onAuthError, onOpenChart, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed }: Props) {
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<PaperAccount | null>(null);
@@ -115,7 +126,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
 
             <div className="card">
               <h3>Open trades <span className="muted small">(prices update every 30 seconds; the worker closes trades at their stop-loss or target)</span></h3>
-              {!detail.open?.length ? <p className="muted">No open trades. Use <b>Plan a trade</b> on the Charts page.</p> : (
+              {!detail.open?.length ? <p className="muted">No open trades. Use <b>Plan a trade</b> on the Charts page, or start an automatic run below.</p> : (
                 <div className="table-wrap">
                   <table className="trades">
                     <thead><tr><th>Market</th><th>Side</th><th>Opened</th><th>Entry</th><th>Now</th><th>Stop-loss</th><th>Target</th><th className="num">Profit</th><th></th></tr></thead>
@@ -123,7 +134,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
                       {detail.open.map(withLive).map((t) => (
                         <tr key={t.id}>
                           <td><button type="button" className="link-button" onClick={() => onOpenChart(t.symbol)}>{displayCode(t.symbol)}</button></td>
-                          <td>{t.side === "long" ? "Buy" : "Short"}</td>
+                          <td>{t.side === "long" ? "Buy" : "Short"}{t.source === "auto" && <span className="tag auto" title="Opened by an automatic run">Auto</span>}</td>
                           <td>{when(t.entryTime)}</td>
                           <td className="mono">{fmt(t.entryPrice, t.precision)}</td>
                           <td className="mono">{fmt(t.price, t.precision)}{live[t.symbol] && <i className="live-dot" title="Live price" />}</td>
@@ -152,6 +163,10 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
               )}
             </div>
 
+            <AutoPanel key={detail.id} account={detail} catalogue={catalogue} favourites={favourites} onToggleFavourite={onToggleFavourite}
+              onAuthError={onAuthError} onChanged={() => { loadDetail(); loadAccounts(); }}
+              prefill={autoPrefill} onPrefillUsed={onPrefillUsed} />
+
             <div className="card">
               <h3>Closed trades</h3>
               <p className="muted small-text">Open the journal for any trade to write what happened and the lesson you took from it.</p>
@@ -164,7 +179,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
                         <tr key={t.id} className="clickable" onClick={() => setJournal(t)}>
                           <td>{when(t.exitTime)}</td>
                           <td>{displayCode(t.symbol)}</td>
-                          <td>{t.side === "long" ? "Buy" : "Short"}</td>
+                          <td>{t.side === "long" ? "Buy" : "Short"}{t.source === "auto" && <span className="tag auto" title="Opened by an automatic run">Auto</span>}</td>
                           <td>{t.exitReason}</td>
                           <td className={`num ${(t.pnl ?? 0) >= 0 ? "up" : "down"}`}>{money(t.pnl)}</td>
                           <td className="num">{t.r === null ? "–" : t.r.toFixed(2)}</td>
@@ -280,8 +295,10 @@ function Journal({ trade, onClose, onSaved, onAuthError }: { trade: PaperTrade; 
         <dt>Rule score</dt><dd>{trade.ruleScore}</dd>
       </dl>
       {trade.ruleFlags.length > 0 && <ul className="warnings">{trade.ruleFlags.map((f) => <li key={f} className="warn caution">{f}</li>)}</ul>}
-      <p><b>Trend you saw:</b> {trade.trend || "–"} · <b>Mood:</b> {MOOD_LABEL[trade.mood] ?? "–"}</p>
-      <p><b>Why you took it:</b> {trade.reason || "–"}</p>
+      {trade.source === "auto" ? <p><b>Opened automatically.</b> {trade.reason}</p> : <>
+        <p><b>Trend you saw:</b> {trade.trend || "–"} · <b>Mood:</b> {MOOD_LABEL[trade.mood] ?? "–"}</p>
+        <p><b>Why you took it:</b> {trade.reason || "–"}</p>
+      </>}
       <label className="form-row"><span className="field-label">Notes</span>
         <textarea rows={4} maxLength={2000} value={notes} onChange={(e) => { setNotes(e.target.value); setSaved(false); }}
           placeholder="What happened? Did you stick to the plan?" /></label>

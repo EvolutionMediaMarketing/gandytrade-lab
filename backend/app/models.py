@@ -194,6 +194,8 @@ class PaperTrade(Base):
     lesson: Mapped[str] = mapped_column(String(500), default="")
     rule_flags: Mapped[list] = mapped_column(JSON, default=list)  # rules broken, in plain words
     rule_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Set when an automatic paper-trading run opened this trade.
+    auto_run_id: Mapped[int | None] = mapped_column(ForeignKey("auto_runs.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
 class PaperEvent(Base):
@@ -210,3 +212,26 @@ class PaperEvent(Base):
     quote_ts: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # time of that market price
     quote_source: Mapped[str] = mapped_column(String(16), default="")
     detail: Mapped[str] = mapped_column(String(255), default="")
+
+
+class AutoRun(Base):
+    """Automatic paper trading: one strategy trading one market and timeframe on a paper account,
+    following its rules exactly, so its live results can be compared with its backtest."""
+
+    __tablename__ = "auto_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32))
+    timeframe: Mapped[str] = mapped_column(String(8))
+    strategy: Mapped[str] = mapped_column(String(40))
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    direction: Mapped[str] = mapped_column(String(8), default="long")  # long | both
+    status: Mapped[str] = mapped_column(String(10), index=True)  # running | paused | stopped
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_bar_ts: Mapped[int] = mapped_column(BigInteger, default=0)  # newest finished candle the rules have looked at
+    last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_message: Mapped[str] = mapped_column(String(255), default="")
+    errors: Mapped[int] = mapped_column(Integer, default=0)  # problems in a row; the run pauses itself after a few
+    backtest: Mapped[dict] = mapped_column(JSON, default=dict)  # what the backtest showed when the run started
