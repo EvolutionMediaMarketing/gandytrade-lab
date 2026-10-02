@@ -217,3 +217,43 @@ def test_long_gap_fill_is_capped(client, monkeypatch):
     start = service._page_start(db, lookup(db, "EUR_USD"), get_timeframe("1m"), 500, False, now)
     assert start >= int(now.timestamp()) - service.DEEP_DAYS["1m"] * 86400 - 5
     db.close()
+
+
+def test_recorded_spreads_are_used_for_fills():
+    from app.backtest.engine import Book
+
+    book = Book(Costs(spread_pct=0.01, slippage_pct=0.0), Flat(), "cfd")
+    assert book.fill(100.0, True) == pytest.approx(100.005)  # typical: half of 0.01%
+    assert book.fill(100.0, True, 0.04) == pytest.approx(100.02)  # recorded: half of 0.04
+    assert book.fill(100.0, False, 0.04) == pytest.approx(99.98)
+    assert book.fill(100.0, True, float("nan")) == pytest.approx(100.005)  # missing: typical
+    own = Book(Costs(spread_pct=0.01, slippage_pct=0.0), Flat(), "cfd", market_spreads=False)
+    assert own.fill(100.0, True, 0.04) == pytest.approx(100.005)  # your own setting wins
+
+
+def test_wide_recorded_spreads_cost_more():
+    narrow = [(100, 100.2, 99.9, 100), (100, 100.5, 99.8, 100.3), (100.3, 101.4, 100.2, 101.2), (101, 101, 101, 101)]
+
+    def run(spread):
+        n = len(narrow)
+
+        def compute(df, _p):
+            first = pd.Series([i == 0 for i in range(n)], index=df.index)
+            return Rules(Side({"go": first}, exit=pd.Series(False, index=df.index), stop=pd.Series(99.0, index=df.index),
+                              target=pd.Series(101.0, index=df.index)))
+
+        s = Strategy("t", "t", "", [], "", "", "", [Param("x", "x", 1, 1, 2)], compute)
+        bars = [Bar(1_700_000_000 + i * 300, o, h, lo, c, 1, spread) for i, (o, h, lo, c) in enumerate(narrow)]
+        return engine.run(bars, s, {}, settings(direction="long", costs=Costs(0.01, 0.0)), Flat()).trades[0]
+
+    cheap, dear = run(0.01), run(0.2)
+    assert dear.costs_gbp > cheap.costs_gbp * 5
+    assert dear.entry_price == pytest.approx(100.1)  # opened at 100 mid + half of 0.2
+
+
+def test_oanda_spread_parsing():
+    from app.market.providers.oanda import _spread
+
+    assert _spread({"o": "1.1000", "c": "1.1002"}, {"o": "1.1001", "c": "1.1005"}) == pytest.approx(0.0003)
+    assert _spread(None, {"o": "1"}) is None
+    assert _spread({"o": "1.2", "c": "1.2"}, {"o": "1.1", "c": "1.1"}) is None  # crossed: ignore

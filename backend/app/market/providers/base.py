@@ -11,6 +11,9 @@ class Bar:
     low: float
     close: float
     volume: float = 0.0
+    # Gap between the buy (ask) and sell (bid) price, in price units, where the provider records it:
+    # the wider of the two at the candle's open and close. None means use the typical spread.
+    spread: float | None = None
 
 
 class ProviderError(Exception):

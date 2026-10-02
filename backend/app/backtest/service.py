@@ -66,9 +66,11 @@ def run(db: Session, req: Request) -> dict:
     conv = converter(db, currency)
     costs = merge(default_costs(symbol.asset_class, mode), req.costs)
     risk = RiskSettings(req.risk_pct, req.daily_loss_pct, req.max_drawdown_pct).cleaned()
+    # If you set your own spread, it's used everywhere; otherwise OANDA's recorded spreads are used where known.
+    own_spread = "spread_pct" in (req.costs or {}) and req.costs.get("spread_pct") is not None
     settings = engine.Settings(
         start_balance=start, mode=mode, direction=direction if mode == "cfd" else "long", risk=risk,
-        leverage=leverage_cap(symbol.code, symbol.asset_class, mode), costs=costs,
+        leverage=leverage_cap(symbol.code, symbol.asset_class, mode), costs=costs, market_spreads=not own_spread,
     )
 
     # The yardstick is plain buy and hold: no leverage, no overnight financing.
@@ -93,13 +95,24 @@ def run(db: Session, req: Request) -> dict:
         warnings.append({"level": "caution", "text": (
             f"Only {len(bars)} candles of history, too few for indicators that look back 200 candles. "
             "Try the weekly timeframe, which has much longer history.")})
+    recorded = [b.spread / b.close * 100 for b in bars if b.spread and b.close > 0]
+    spread_note = ""
+    if recorded and not own_spread:
+        avg = sum(recorded) / len(recorded)
+        spread_note = (f"Spreads: OANDA's actual bid/ask spread at each candle, averaging {avg:.4f}% of the price "
+                       f"(the typical figure would be {costs.spread_pct:g}%). Candles without a recorded spread use the typical one.")
+        warnings.append({"level": "info", "text": spread_note})
+    elif own_spread:
+        warnings.append({"level": "info", "text": f"Spreads: your own figure of {costs.spread_pct:g}% on every trade."})
     if strategy.intraday_only and tf.seconds > 900:
         warnings.insert(0, {"level": "stop", "text": (
             f"{strategy.name} only trades on 1 to 15-minute candles. Try the {strategy.suggested_timeframe or '5m'} timeframe.")})
     elif strategy.intraday_only:
         warnings.append({"level": "info", "text": (
-            "Scalping test: costs use typical spreads. Real spreads widen at the open, around news and late at night, "
-            "and real fills can lag on fast moves, so treat a thin profit here as a loss.")})
+            ("Scalping test: costs use OANDA's recorded spread for each candle, so busy and quiet hours are priced as they were. "
+             if recorded and not own_spread else
+             "Scalping test: costs use typical spreads. Real spreads widen at the open, around news and late at night. ")
+            + "Real fills can also lag on fast moves, so treat a thin profit here as a loss.")})
     if not strategy.benchmark:
         warnings.append({"level": "info", "text": "Buy and hold is shown without leverage or overnight financing: simply owning the market."})
     if direction == "both" and mode == "cash":
@@ -116,6 +129,8 @@ def run(db: Session, req: Request) -> dict:
         "costs": costs.to_dict(),
         "currency": currency,
         "fills": "Orders fill at the next candle's open; stops fill at the stop price, or the open if it gapped past.",
+        "spreads": "recorded" if recorded and not own_spread else ("yours" if own_spread else "typical"),
+        "avgSpreadPct": round(sum(recorded) / len(recorded), 5) if recorded else None,
     }
     return {
         "symbol": symbol.to_dict(),

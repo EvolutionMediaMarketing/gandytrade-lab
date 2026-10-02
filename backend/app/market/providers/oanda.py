@@ -24,6 +24,18 @@ def _parse_time(value: str) -> int:
     return int(datetime.fromisoformat(trimmed + "+00:00").timestamp())
 
 
+def _spread(bid: dict | None, ask: dict | None) -> float | None:
+    """The wider of the open and close spreads, or None if OANDA didn't send bid and ask prices."""
+    if not bid or not ask:
+        return None
+    try:
+        gaps = [float(ask[k]) - float(bid[k]) for k in ("o", "c")]
+    except (KeyError, ValueError, TypeError):
+        return None
+    widest = max(gaps)
+    return widest if widest > 0 else None
+
+
 def fetch_candles(
     token: str,
     symbol: Symbol,
@@ -36,7 +48,8 @@ def fetch_candles(
     if not token:
         raise ProviderError("OANDA token not set.")
     url = PRACTICE_HOST + CANDLES_PATH.format(instrument=symbol.provider_symbol)
-    params: dict = {"granularity": tf.oanda, "count": min(count, 5000), "price": "M"}
+    # Short candles also fetch bid and ask prices, so costs use the spread OANDA actually had at the time.
+    params: dict = {"granularity": tf.oanda, "count": min(count, 5000), "price": "MBA" if tf.intraday else "M"}
     if start is not None:
         params["from"] = datetime.fromtimestamp(start, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     headers = {"Authorization": f"Bearer {token}", "Accept-Datetime-Format": "RFC3339"}
@@ -61,6 +74,7 @@ def fetch_candles(
     for c in resp.json().get("candles", []):
         mid = c.get("mid") or {}
         try:
+            spread = _spread(c.get("bid"), c.get("ask"))
             bars.append(
                 Bar(
                     ts=_parse_time(c["time"]),
@@ -69,6 +83,7 @@ def fetch_candles(
                     low=float(mid["l"]),
                     close=float(mid["c"]),
                     volume=float(c.get("volume", 0)),
+                    spread=spread,
                 )
             )
         except (KeyError, ValueError):

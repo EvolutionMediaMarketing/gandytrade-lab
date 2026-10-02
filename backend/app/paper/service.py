@@ -47,6 +47,7 @@ class Quote:
     sample: bool
     bars: list[Bar]
     timeframe: str
+    spread: float | None = None  # OANDA's recorded bid/ask gap on the latest candle, if known
 
 
 # --- Prices ------------------------------------------------------------------------------------
@@ -62,7 +63,7 @@ def latest_quote(db: Session, symbol: Symbol) -> Quote:
         raise PaperError(result.warnings[0] if result.warnings else "No price available.")
     last = result.bars[-1]
     quoted = min(int(time.time()), last.ts + tf.seconds)
-    return Quote(last.close, quoted, result.source, result.sample, result.bars, tf.code)
+    return Quote(last.close, quoted, result.source, result.sample, result.bars, tf.code, last.spread)
 
 
 def check_fresh(q: Quote, symbol: Symbol) -> None:
@@ -272,7 +273,7 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
     check_fresh(q, symbol)
     book, conv = _book(db, symbol, acct.mode)
     buying = side > 0
-    fill = book.fill(q.mid, buying)
+    fill = book.fill(q.mid, buying, q.spread)
     if (fill - stop) * side <= 0:
         raise PaperError("The stop-loss is on the wrong side of the current price. "
                          f"The price is now about {q.mid:.{symbol.precision}f}.")
@@ -339,7 +340,7 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
     db.add(t)
     db.flush()
     db.add(PaperEvent(trade_id=t.id, kind="opened", price=fill, mid=q.mid, quote_ts=q.ts, quote_source=q.source,
-                      detail=(note or ("sample prices" if q.sample else ""))[:255]))
+                      detail=_detail(note or ("sample prices" if q.sample else ""), q.spread)))
     db.commit()
     return t
 
@@ -404,13 +405,21 @@ def score(flags: list[str]) -> int:
     return max(0, 100 - FLAG_POINTS * len(flags))
 
 
+def _detail(text: str, spread: float | None) -> str:
+    """Event note, recording the spread used when it came from OANDA's bid/ask prices."""
+    if spread:
+        text = (text + "; " if text else "") + f"spread {spread:.6g} (recorded)"
+    return text[:255]
+
+
 def close(db: Session, acct: PaperAccount, t: PaperTrade, level: float, quote_ts: int, source: str, reason: str,
-          kind: str) -> None:
-    """Close at a market level (mid). The fill includes half the spread and slippage."""
+          kind: str, spread: float | None = None) -> None:
+    """Close at a market level (mid). The fill includes half the spread (OANDA's recorded one when
+    known, otherwise the typical one) and slippage."""
     symbol = lookup(db, t.symbol)
     book, conv = _book(db, symbol, acct.mode)
     buying = t.side < 0
-    fill = book.fill(level, buying)
+    fill = book.fill(level, buying, spread)
     now = int(time.time())
     rate = conv.rate(now)
     fees = book.order_fees(t.units, fill, now, buying, opening=False) + _financing(book, t, now)
@@ -424,7 +433,7 @@ def close(db: Session, acct: PaperAccount, t: PaperTrade, level: float, quote_ts
     t.rule_score = score(t.rule_flags or [])
     acct.cash += move - fees
     db.add(PaperEvent(trade_id=t.id, kind=kind, price=fill, mid=level, quote_ts=quote_ts, quote_source=source,
-                      detail=reason[:255]))
+                      detail=_detail(reason, spread)))
 
 
 def close_now(db: Session, user: User, trade_id: int) -> PaperTrade:
@@ -436,7 +445,7 @@ def close_now(db: Session, user: User, trade_id: int) -> PaperTrade:
     symbol = lookup(db, t.symbol)
     q = latest_quote(db, symbol)
     check_fresh(q, symbol)
-    close(db, acct, t, q.mid, q.ts, q.source, "Closed by you", "closed")
+    close(db, acct, t, q.mid, q.ts, q.source, "Closed by you", "closed", q.spread)
     state = account_state(db, acct)
     update_limits(acct, state["equity"])
     db.commit()
@@ -464,16 +473,16 @@ def check_trade(db: Session, acct: PaperAccount, t: PaperTrade, q: Quote) -> boo
             gapped = (b.open - t.target) * t.side >= 0
             hit = (b.open if gapped else t.target, "Target reached", "target")
         if hit:
-            close(db, acct, t, hit[0], b.ts, q.source, hit[1], hit[2])
+            close(db, acct, t, hit[0], b.ts, q.source, hit[1], hit[2], b.spread)
             return True
         if b.ts + tf_seconds <= now:
             t.last_checked_ts = b.ts  # finished candles are never checked twice; the forming one is
     # The latest price itself (covers the rest of the candle the trade was opened in).
     if (q.mid - t.stop) * t.side <= 0:
-        close(db, acct, t, q.mid, q.ts, q.source, "Stop-loss", "stop")
+        close(db, acct, t, q.mid, q.ts, q.source, "Stop-loss", "stop", q.spread)
         return True
     if t.target is not None and (q.mid - t.target) * t.side >= 0:
-        close(db, acct, t, q.mid, q.ts, q.source, "Target reached", "target")
+        close(db, acct, t, q.mid, q.ts, q.source, "Target reached", "target", q.spread)
         return True
     return False
 

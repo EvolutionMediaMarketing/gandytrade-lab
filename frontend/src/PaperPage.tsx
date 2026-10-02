@@ -192,7 +192,8 @@ export default function PaperPage({ onAuthError, onOpenChart, catalogue, favouri
 
             <AutoPanel key={detail.id} account={detail} catalogue={catalogue} favourites={favourites} onToggleFavourite={onToggleFavourite}
               onAuthError={onAuthError} onChanged={() => { loadDetail(); loadAccounts(); }}
-              prefill={autoPrefill} onPrefillUsed={onPrefillUsed} />
+              prefill={autoPrefill} onPrefillUsed={onPrefillUsed}
+              accounts={accounts} onSwitchAccount={(id) => { setSelected(id); setJournal(null); loadAccounts(); }} />
 
             <div className="card">
               <h3>Closed trades</h3>

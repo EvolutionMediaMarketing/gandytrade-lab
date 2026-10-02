@@ -111,6 +111,7 @@ class PriceBar(Base):
     low: Mapped[float] = mapped_column(Float)
     close: Mapped[float] = mapped_column(Float)
     volume: Mapped[float] = mapped_column(Float, default=0.0)
+    spread: Mapped[float | None] = mapped_column(Float, nullable=True)  # recorded bid/ask gap (OANDA, short candles)
 
 
 class FetchState(Base):

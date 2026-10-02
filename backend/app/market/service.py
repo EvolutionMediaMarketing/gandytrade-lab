@@ -20,6 +20,7 @@ DEEP_REFRESH_EVERY = timedelta(days=30)
 # so scalping strategies are judged on months of trades rather than a few days.
 DEEP_DAYS = {"1m": 30, "5m": 183, "15m": 365, "30m": 365}
 MAX_PAGES = 25
+SPREADS_SINCE = datetime(2026, 10, 2, 16, 30, tzinfo=timezone.utc)  # when bid/ask spreads started being recorded
 
 
 def history_cap(symbol: Symbol, tf: Timeframe) -> int:
@@ -87,10 +88,13 @@ def _upsert(db: Session, symbol: Symbol, tf: Timeframe, bars: list[Bar]) -> None
                     low=b.low,
                     close=b.close,
                     volume=b.volume,
+                    spread=b.spread,
                 )
             )
         else:  # the latest bar is still forming, so update it
             row.open, row.high, row.low, row.close, row.volume = b.open, b.high, b.low, b.close, b.volume
+            if b.spread is not None:
+                row.spread = b.spread
 
 
 def _read_cache(db: Session, symbol: Symbol, tf: Timeframe, limit: int) -> list[Bar]:
@@ -104,7 +108,7 @@ def _read_cache(db: Session, symbol: Symbol, tf: Timeframe, limit: int) -> list[
         .order_by(PriceBar.ts.desc())
         .limit(limit)
     ).all()
-    return [Bar(r.ts, r.open, r.high, r.low, r.close, r.volume) for r in reversed(rows)]
+    return [Bar(r.ts, r.open, r.high, r.low, r.close, r.volume, r.spread) for r in reversed(rows)]
 
 
 def _refresh(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool, result: BarsResult) -> None:
@@ -120,7 +124,7 @@ def _refresh(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool,
     fetched_at = _aware(state.fetched_at) if state else None
     deep_at = _aware(state.deep_fetched_at) if state and state.deep_fetched_at else None
     if deep:
-        due = deep_at is None or now - deep_at > DEEP_REFRESH_EVERY
+        due = deep_at is None or now - deep_at > DEEP_REFRESH_EVERY or _missing_spreads(symbol, tf, deep_at)
     else:
         due = fetched_at is None or (now - fetched_at).total_seconds() >= refresh_after_seconds(tf, symbol.provider)
     if not due:
@@ -143,6 +147,11 @@ def _refresh(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool,
         db.rollback()
         result.stale = True
         result.warnings.append(str(exc))
+
+
+def _missing_spreads(symbol: Symbol, tf: Timeframe, deep_at: datetime | None) -> bool:
+    """Short OANDA candles downloaded before spreads were recorded: download them again, once, with spreads."""
+    return symbol.provider == "oanda" and tf.intraday and deep_at is not None and deep_at < SPREADS_SINCE
 
 
 def _page_start(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool, now: datetime) -> int | None:

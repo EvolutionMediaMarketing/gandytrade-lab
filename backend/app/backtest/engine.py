@@ -12,7 +12,8 @@ On each candle, in this order:
      next open. The risk guard sizes or refuses every new trade.
 
 Prices in the data are mid prices. Buying costs half the spread plus slippage above mid;
-selling the same below. Fees, stamp duty, currency conversion and overnight financing are
+selling the same below. Where OANDA recorded the actual bid/ask spread for a candle (short
+timeframes), that spread is used for fills in that candle; otherwise the typical spread is. Fees, stamp duty, currency conversion and overnight financing are
 charged as set in `costs.Costs`. Everything is converted to pounds at the rate on the day.
 """
 
@@ -37,6 +38,7 @@ class Settings:
     risk: RiskSettings = field(default_factory=RiskSettings)
     leverage: float = 1.0
     costs: Costs = field(default_factory=lambda: Costs(0, 0))
+    market_spreads: bool = True  # use recorded spreads where the data has them (off when you set your own)
 
 
 @dataclass
@@ -95,10 +97,15 @@ def _nights(a: int, b: int) -> int:
 class _Book:
     """Fills, fees and pounds."""
 
-    def __init__(self, costs: Costs, conv: Converter, mode: str) -> None:
-        self.c, self.conv, self.mode = costs, conv, mode
+    def __init__(self, costs: Costs, conv: Converter, mode: str, market_spreads: bool = True) -> None:
+        self.c, self.conv, self.mode, self.market_spreads = costs, conv, mode, market_spreads
 
-    def fill(self, mid: float, buying: bool) -> float:
+    def fill(self, mid: float, buying: bool, spread: float | None = None) -> float:
+        """The price you'd actually get: half the spread plus slippage worse than mid. `spread` is the
+        recorded bid/ask gap in price units, if known; otherwise the typical spread percentage is used."""
+        if self.market_spreads and spread is not None and spread == spread and spread > 0:
+            adj = spread / 2 + mid * self.c.slippage_pct / 100
+            return mid + adj if buying else mid - adj
         adj = self.c.spread_pct / 200 + self.c.slippage_pct / 100
         return mid * (1 + adj) if buying else mid * (1 - adj)
 
@@ -122,7 +129,8 @@ class _Book:
 def _frame(bars: list[Bar]) -> pd.DataFrame:
     return pd.DataFrame(
         {"ts": [b.ts for b in bars], "open": [b.open for b in bars], "high": [b.high for b in bars],
-         "low": [b.low for b in bars], "close": [b.close for b in bars], "volume": [b.volume for b in bars]}
+         "low": [b.low for b in bars], "close": [b.close for b in bars], "volume": [b.volume for b in bars],
+         "spread": [b.spread if b.spread is not None else np.nan for b in bars]}
     )
 
 
@@ -132,7 +140,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
 
     df = _frame(bars)
     rules = strategy.run(df, params)
-    book = _Book(settings.costs, conv, settings.mode)
+    book = _Book(settings.costs, conv, settings.mode, settings.market_spreads)
     risk = settings.risk.cleaned()
     allow_short = settings.direction == "both" and settings.mode == "cfd" and rules.short is not None
 
@@ -144,6 +152,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
 
     ts = df["ts"].to_numpy(dtype=np.int64)
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
+    sp = df["spread"].to_numpy(dtype=float)
 
     cash = settings.start_balance
     limits = AccountLimits(risk, peak=cash)
@@ -158,7 +167,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         nonlocal cash, pos
         t = pos
         buying = t.side < 0
-        price = fill if fill is not None else book.fill(mid, buying)
+        price = fill if fill is not None else book.fill(mid, buying, sp[i])
         fees = book.order_fees(t.units, price, ts[i], buying, opening=False) + book.financing(t, ts[i])
         move_gbp = (price - t.entry_price) * t.side * t.units / conv.rate(ts[i])
         t.exit_i, t.exit_ts, t.exit_price, t.exit_mid, t.exit_reason = i, int(ts[i]), price, mid, reason
@@ -188,7 +197,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         if pending_entry is not None and pos is None:
             side, stop, target = pending_entry
             buying = side > 0
-            price = book.fill(o[i], buying)
+            price = book.fill(o[i], buying, sp[i])
             if (o[i] - stop) * side <= 0:
                 skipped["Price opened beyond the stop-loss"] = skipped.get("Price opened beyond the stop-loss", 0) + 1
             else:
@@ -222,14 +231,14 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
                 gapped = (o[i] - pos.stop) * pos.side <= 0 and pos.entry_i < i
                 level = o[i] if gapped else pos.stop
                 close(i, level, "Stop-loss (gapped through)" if gapped else "Stop-loss",
-                      fill=book.fill(level, buying=pos.side < 0))
+                      fill=book.fill(level, pos.side < 0, sp[i]))
         # ...then the profit target (if a candle reached both, the stop is assumed to have come first)
         if pos is not None and pos.target is not None:
             hit = h[i] >= pos.target if pos.side > 0 else l[i] <= pos.target
             if hit:
                 gapped = (o[i] - pos.target) * pos.side >= 0 and pos.entry_i < i
                 level = o[i] if gapped else pos.target
-                close(i, level, "Target reached", fill=book.fill(level, buying=pos.side < 0))
+                close(i, level, "Target reached", fill=book.fill(level, pos.side < 0, sp[i]))
 
         # 3. At the close
         eq = mark(i)
@@ -267,9 +276,9 @@ def buy_and_hold(bars: list[Bar], settings: Settings, conv: Converter) -> Result
     """Put the whole balance in at the first open (no leverage) and hold to the last close."""
     if len(bars) < 2:
         return Result([], [(b.ts, settings.start_balance) for b in bars])
-    book = _Book(settings.costs, conv, settings.mode)
+    book = _Book(settings.costs, conv, settings.mode, settings.market_spreads)
     first, last = bars[0], bars[-1]
-    price = book.fill(first.open, True)
+    price = book.fill(first.open, True, first.spread)
     rate = conv.rate(first.ts)
     per_unit_gbp = price / rate
     fee_rate = (settings.costs.fx_fee_pct + (settings.costs.stamp_duty_pct if settings.mode == "cash" else 0)) / 100
@@ -280,7 +289,7 @@ def buy_and_hold(bars: list[Bar], settings: Settings, conv: Converter) -> Result
     equity = []
     for b in bars:
         equity.append((b.ts, cash + units * b.close / conv.rate(b.ts) - book.financing(t, b.ts)))
-    exit_price = book.fill(last.close, False)
+    exit_price = book.fill(last.close, False, last.spread)
     exit_fees = book.order_fees(units, exit_price, last.ts, False, False) + book.financing(t, last.ts)
     proceeds = units * exit_price / conv.rate(last.ts)
     t.exit_i, t.exit_ts, t.exit_price, t.exit_mid = len(bars) - 1, last.ts, exit_price, last.close

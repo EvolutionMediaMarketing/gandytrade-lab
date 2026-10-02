@@ -225,7 +225,7 @@ def change(db: Session, user: User, run_id: int, action: str, close_open: bool =
             symbol = lookup(db, t.symbol)
             q = paper.latest_quote(db, symbol)
             paper.check_fresh(q, symbol)
-            paper.close(db, acct, t, q.mid, q.ts, q.source, f"Closed when the run was {word.lower()}", "closed")
+            paper.close(db, acct, t, q.mid, q.ts, q.source, f"Closed when the run was {word.lower()}", "closed", q.spread)
             paper.update_limits(acct, paper.account_state(db, acct)["equity"])
             run.last_message = f"{word} by you, and its open trade was closed."
         elif t is not None:
@@ -285,7 +285,7 @@ def step(db: Session, run: AutoRun) -> str:
     done = []
     if t is not None and d.exit_label:
         late = " (met on a missed candle, so closed late)" if d.late_exit else ""
-        paper.close(db, acct, t, q.mid, q.ts, q.source, f"Exit rule: {d.exit_label}"[:80], "exit_rule")
+        paper.close(db, acct, t, q.mid, q.ts, q.source, f"Exit rule: {d.exit_label}"[:80], "exit_rule", q.spread)
         paper.update_limits(acct, paper.account_state(db, acct)["equity"])
         done.append(f"closed the {'buy' if t.side > 0 else 'short'} (exit rule: {d.exit_label}){late}")
         t = None

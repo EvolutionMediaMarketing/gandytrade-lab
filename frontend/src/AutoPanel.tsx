@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type { AutoOptions, AutoPrefill, AutoRun, Catalogue, PaperAccount, SymbolInfo } from "./types";
@@ -19,10 +19,12 @@ interface Props {
   onChanged: () => void;
   prefill: AutoPrefill | null;
   onPrefillUsed: () => void;
+  accounts: PaperAccount[];
+  onSwitchAccount: (id: number) => void;
 }
 
 /** Automatic paper trading: strategies trading this paper account by their own rules. */
-export default function AutoPanel({ account, catalogue, favourites, onToggleFavourite, onAuthError, onChanged, prefill, onPrefillUsed }: Props) {
+export default function AutoPanel({ account, catalogue, favourites, onToggleFavourite, onAuthError, onChanged, prefill, onPrefillUsed, accounts, onSwitchAccount }: Props) {
   const [runs, setRuns] = useState<AutoRun[]>([]);
   const [options, setOptions] = useState<AutoOptions | null>(null);
   const [adding, setAdding] = useState(false);
@@ -77,9 +79,15 @@ export default function AutoPanel({ account, catalogue, favourites, onToggleFavo
       )}
 
       {adding && options ? (
-        <NewRun account={account} options={options} catalogue={catalogue} favourites={favourites}
+        <NewRun account={account} accounts={accounts} options={options} catalogue={catalogue} favourites={favourites}
           onToggleFavourite={onToggleFavourite} onAuthError={onAuthError} prefill={prefill}
-          onDone={(started) => { setAdding(false); onPrefillUsed(); if (started) { load(); onChanged(); } }} />
+          onDone={(startedOn) => {
+            setAdding(false);
+            onPrefillUsed();
+            if (startedOn === null) return;
+            if (startedOn !== account.id) onSwitchAccount(startedOn);  // show the account it went on
+            else { load(); onChanged(); }
+          }} />
       ) : (
         !account.archived && <button type="button" className="small" onClick={() => setAdding(true)}>+ Start an automatic run</button>
       )}
@@ -144,11 +152,16 @@ function RunCard({ run, onChange }: { run: AutoRun; onChange: (run: AutoRun, act
   );
 }
 
-function NewRun({ account, options, catalogue, favourites, onToggleFavourite, onAuthError, prefill, onDone }: {
-  account: PaperAccount; options: AutoOptions; catalogue: Catalogue | null; favourites: SymbolInfo[];
+function NewRun({ account, accounts, options, catalogue, favourites, onToggleFavourite, onAuthError, prefill, onDone }: {
+  account: PaperAccount; accounts: PaperAccount[]; options: AutoOptions; catalogue: Catalogue | null; favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void; onAuthError: (err: unknown) => void;
-  prefill: AutoPrefill | null; onDone: (started: boolean) => void;
+  prefill: AutoPrefill | null; onDone: (startedOn: number | null) => void;
 }) {
+  // Which paper account: chosen on purpose when arriving from Research or Backtest.
+  const [target, setTarget] = useState<string>(prefill ? "" : String(account.id));
+  const [newName, setNewName] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => { if (prefill) formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [prefill]);
   const known = [...(catalogue?.symbols ?? []), ...favourites];
   const [symbol, setSymbol] = useState<SymbolInfo | undefined>(() => known.find((s) => s.code === (prefill?.symbol ?? "EUR_USD")));
   const [code, setCode] = useState(prefill?.symbol ?? "EUR_USD");
@@ -173,7 +186,10 @@ function NewRun({ account, options, catalogue, favourites, onToggleFavourite, on
   const SHORT = ["1m", "5m", "15m"];
   const allowed = (symbol ? options.timeframes[symbol.provider] ?? [] : [])
     .filter((t) => !chosen?.intradayOnly || SHORT.includes(t));  // scalpers only run on short candles
-  const canShort = account.mode === "cfd" && !!chosen?.canShort;
+  const targetAccount = accounts.find((a) => String(a.id) === target);
+  const targetMode = target === "new" ? "cfd" : targetAccount?.mode;
+  const canShort = targetMode === "cfd" && !!chosen?.canShort;
+  const suggestedName = `${chosen?.name.replace(" (scalp)", "") ?? "Auto"} – ${displayCode(code)}`.slice(0, 60);
   useEffect(() => {
     if (allowed.length && !allowed.includes(timeframe)) {
       const preferred = chosen?.intradayOnly ? chosen.suggestedTimeframe || "5m" : "1d";
@@ -182,17 +198,57 @@ function NewRun({ account, options, catalogue, favourites, onToggleFavourite, on
   }, [allowed, timeframe, chosen]);
 
   return (
-    <form className="new-run" onSubmit={(e) => {
+    <form ref={formRef} className="new-run" onSubmit={async (e) => {
       e.preventDefault();
       setBusy(true);
       setError(null);
-      api.startAutoRun({ account_id: account.id, symbol: code, timeframe, strategy, direction: canShort ? direction : "long",
-        params: prefill?.strategy === strategy && prefill?.params ? prefill.params : undefined })
-        .then(() => onDone(true))
-        .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "Couldn't start it."); })
-        .finally(() => setBusy(false));
+      try {
+        let accountId = Number(target);
+        let made: PaperAccount | null = null;
+        if (target === "new") {
+          made = await api.newPaperAccount({ name: (newName.trim() || suggestedName), starting_balance: 200, mode: "cfd", risk_pct: 1 });
+          accountId = made.id;
+        }
+        try {
+          await api.startAutoRun({ account_id: accountId, symbol: code, timeframe, strategy, direction: canShort ? direction : "long",
+            params: prefill?.strategy === strategy && prefill?.params ? prefill.params : undefined });
+        } catch (err) {
+          // Don't leave an empty account behind if the run couldn't start.
+          if (made) await api.deletePaperAccount(made.id, made.name).catch(() => undefined);
+          throw err;
+        }
+        onDone(accountId);
+      } catch (err) {
+        onAuthError(err);
+        setError(err instanceof Error ? err.message : "Couldn't start it.");
+      } finally {
+        setBusy(false);
+      }
     }}>
-      <h4>Start an automatic run on {account.name}</h4>
+      <h4>Start an automatic run</h4>
+      <label className="form-row">
+        <span className="field-label">Paper account</span>
+        <select value={target} onChange={(e) => setTarget(e.target.value)} required>
+          <option value="" disabled>Choose a paper account…</option>
+          {accounts.filter((a) => !a.archived).map((a) => (
+            <option key={a.id} value={String(a.id)}>
+              {a.name} ({a.mode === "cash" ? "real shares" : "CFD / spread bet"}, {a.openCount} open
+              {a.autoRunning ? `, ${a.autoRunning} automatic run${a.autoRunning === 1 ? "" : "s"}` : ""})
+            </option>
+          ))}
+          <option value="new">A new CFD account (£200) just for this…</option>
+        </select>
+        <span className="muted small-text">
+          Give each strategy its own account, so its results aren't mixed with other trades.
+          {targetAccount?.autoRunning ? " This account already has automatic runs." : ""}
+        </span>
+      </label>
+      {target === "new" && (
+        <label className="form-row">
+          <span className="field-label">New account name</span>
+          <input value={newName} maxLength={60} placeholder={suggestedName} onChange={(e) => setNewName(e.target.value)} />
+        </label>
+      )}
       <MarketPicker value={code} current={symbol} popular={catalogue?.symbols ?? []} counts={catalogue?.marketCounts ?? {}}
         favourites={favourites} onToggleFavourite={onToggleFavourite} onAuthError={onAuthError}
         onChange={(s) => { setSymbol(s); setCode(s.code); }} />
@@ -232,8 +288,8 @@ function NewRun({ account, options, catalogue, favourites, onToggleFavourite, on
       </p>
       {error && <p className="form-error">{error}</p>}
       <div className="planner-actions">
-        <button type="submit" className="primary" disabled={busy || !strategy || !allowed.includes(timeframe)}>{busy ? "Starting…" : "Start"}</button>
-        <button type="button" className="ghost" onClick={() => onDone(false)}>Cancel</button>
+        <button type="submit" className="primary" disabled={busy || !target || !strategy || !allowed.includes(timeframe)}>{busy ? "Starting…" : "Start"}</button>
+        <button type="button" className="ghost" onClick={() => onDone(null)}>Cancel</button>
       </div>
     </form>
   );
