@@ -1,7 +1,7 @@
 """Get price bars: from the database cache, refreshed from the provider when stale."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +14,8 @@ from .symbols import Symbol
 from .timeframes import Timeframe, refresh_after_seconds
 
 MAX_BARS = 2000
+MAX_HISTORY = 5000
+DEEP_REFRESH_EVERY = timedelta(days=30)
 
 
 @dataclass
@@ -94,17 +96,8 @@ def _read_cache(db: Session, symbol: Symbol, tf: Timeframe, limit: int) -> list[
     return [Bar(r.ts, r.open, r.high, r.low, r.close, r.volume) for r in reversed(rows)]
 
 
-def get_bars(db: Session, symbol: Symbol, tf: Timeframe, limit: int = 1000) -> BarsResult:
-    limit = max(50, min(limit, MAX_BARS))
-
-    if not _provider_key(symbol):
-        return BarsResult(
-            bars=sample.generate(symbol, tf, limit),
-            source="sample",
-            sample=True,
-            warnings=[f"Sample data: not real prices. Add your free {KEY_NAMES.get(symbol.provider, 'data')} key to see real prices."],
-        )
-
+def _refresh(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool, result: BarsResult) -> None:
+    """Fetch from the provider into the cache; problems become warnings and saved prices are used."""
     state = db.scalar(
         select(FetchState).where(
             FetchState.source == symbol.provider,
@@ -113,26 +106,72 @@ def get_bars(db: Session, symbol: Symbol, tf: Timeframe, limit: int = 1000) -> B
         )
     )
     now = datetime.now(timezone.utc)
-    fetched_at = state.fetched_at if state else None
-    if fetched_at is not None and fetched_at.tzinfo is None:
-        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-    fresh = fetched_at is not None and (now - fetched_at).total_seconds() < refresh_after_seconds(tf, symbol.provider)
+    fetched_at = _aware(state.fetched_at) if state else None
+    deep_at = _aware(state.deep_fetched_at) if state and state.deep_fetched_at else None
+    if deep:
+        due = deep_at is None or now - deep_at > DEEP_REFRESH_EVERY
+    else:
+        due = fetched_at is None or (now - fetched_at).total_seconds() >= refresh_after_seconds(tf, symbol.provider)
+    if not due:
+        return
+    try:
+        bars = _fetch_from_provider(symbol, tf, count)
+        _upsert(db, symbol, tf, bars)
+        if state is None:
+            state = FetchState(source=symbol.provider, symbol=symbol.code, timeframe=tf.code, fetched_at=now)
+            db.add(state)
+        state.fetched_at = now
+        if deep:
+            state.deep_fetched_at = now
+        db.commit()
+    except ProviderError as exc:
+        db.rollback()
+        result.stale = True
+        result.warnings.append(str(exc))
 
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _sample(symbol: Symbol, tf: Timeframe, limit: int) -> BarsResult:
+    return BarsResult(
+        bars=sample.generate(symbol, tf, limit),
+        source="sample",
+        sample=True,
+        warnings=[f"Sample data: not real prices. Add your free {KEY_NAMES.get(symbol.provider, 'data')} key to see real prices."],
+    )
+
+
+def get_bars(db: Session, symbol: Symbol, tf: Timeframe, limit: int = 1000) -> BarsResult:
+    """Recent prices for the chart."""
+    limit = max(50, min(limit, MAX_BARS))
+    if not _provider_key(symbol):
+        return _sample(symbol, tf, limit)
     result = BarsResult(bars=[], source=symbol.provider)
-    if not fresh:
-        try:
-            bars = _fetch_from_provider(symbol, tf, limit)
-            _upsert(db, symbol, tf, bars)
-            if state is None:
-                db.add(FetchState(source=symbol.provider, symbol=symbol.code, timeframe=tf.code, fetched_at=now))
-            else:
-                state.fetched_at = now
-            db.commit()
-        except ProviderError as exc:
-            db.rollback()
-            result.stale = True
-            result.warnings.append(str(exc))
+    _refresh(db, symbol, tf, limit, deep=False, result=result)
+    return _finish(db, symbol, tf, limit, result)
 
+
+def get_history(db: Session, symbol: Symbol, tf: Timeframe, limit: int = MAX_HISTORY) -> BarsResult:
+    """Long price history for backtests: up to 5,000 bars, downloaded once and then kept up to date.
+    The candle that's still forming is left out, so a backtest only ever sees finished candles."""
+    limit = max(50, min(limit, MAX_HISTORY))
+    if not _provider_key(symbol):
+        result = _sample(symbol, tf, limit + 1)
+    else:
+        result = BarsResult(bars=[], source=symbol.provider)
+        _refresh(db, symbol, tf, MAX_HISTORY, deep=True, result=result)
+        _refresh(db, symbol, tf, 500, deep=False, result=result)
+        result = _finish(db, symbol, tf, limit + 1, result)
+    now = datetime.now(timezone.utc).timestamp()
+    if result.bars and result.bars[-1].ts + tf.seconds > now:
+        result.bars = result.bars[:-1]
+    result.bars = result.bars[-limit:]
+    return result
+
+
+def _finish(db: Session, symbol: Symbol, tf: Timeframe, limit: int, result: BarsResult) -> BarsResult:
     result.bars = _read_cache(db, symbol, tf, limit)
     if not result.bars and result.warnings:
         raise ProviderError(result.warnings[0])
