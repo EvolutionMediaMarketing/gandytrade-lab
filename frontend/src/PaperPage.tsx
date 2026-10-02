@@ -68,6 +68,28 @@ export default function PaperPage({ onAuthError, onOpenChart, catalogue, favouri
     return { ...t, price: lp.mid, unrealised };
   };
 
+  function deleteAccount(a: PaperAccount) {
+    const open = a.open?.length ?? 0;
+    const closed = a.closed?.length ?? 0;
+    const typed = window.prompt(
+      `Delete "${a.name}" for good?\n\n` +
+      `This removes its ${open} open and ${closed} closed trade${closed === 1 ? "" : "s"}, their journal notes and fill records, ` +
+      "and any automatic runs on it, along with their results. It can't be undone.\n\n" +
+      "To confirm, type the account's name exactly:",
+    );
+    if (typed === null) return;
+    api.deletePaperAccount(a.id, typed).then(() => {
+      setDetail(null);
+      setJournal(null);
+      setSelected(null);
+      setError(null);
+      loadAccounts();
+    }).catch((err) => {
+      onAuthError(err);
+      setError(err instanceof Error ? err.message : "Couldn't delete the account.");
+    });
+  }
+
   function act(p: Promise<unknown>) {
     p.then(() => { loadDetail(); loadAccounts(); }).catch((err) => {
       onAuthError(err);
@@ -103,7 +125,8 @@ export default function PaperPage({ onAuthError, onOpenChart, catalogue, favouri
           <>
             <header className="result-head">
               <h2>{detail.name} <span className="muted">{detail.mode === "cash" ? "Real shares, no leverage" : "CFD / spread bet"}</span></h2>
-              <p className="muted small-text">Started with {money(detail.startingBalance, 0)}{detail.deposits ? ` plus ${money(detail.deposits, 0)} added` : ""} · risk {detail.riskPct}% a trade · at most {detail.maxOpenRiskPct}% at risk at once · daily loss limit {detail.dailyLossPct}% · pauses after a {detail.maxDrawdownPct}% fall · <a href="#/settings">change</a></p>
+              <p className="muted small-text">Started with {money(detail.startingBalance, 0)}{detail.deposits ? ` plus ${money(detail.deposits, 0)} added` : ""} · risk {detail.riskPct}% a trade · at most {detail.maxOpenRiskPct}% at risk at once · daily loss limit {detail.dailyLossPct}% · pauses after a {detail.maxDrawdownPct}% fall · <a href="#/settings">change</a>
+                {" · "}<button type="button" className="link-button danger-link" onClick={() => deleteAccount(detail)}>delete account</button></p>
             </header>
             {detail.halted && (
               <div className="warn stop">

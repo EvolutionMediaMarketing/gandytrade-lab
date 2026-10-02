@@ -76,6 +76,10 @@ export const api = {
     archived?: boolean; resume?: boolean;
   }) =>
     request<PaperAccount>(`/api/paper/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deletePaperAccount: (id: number, confirmName: string) =>
+    request<{ ok: boolean; trades: number; runs: number }>(`/api/paper/accounts/${id}/delete`, {
+      method: "POST", body: JSON.stringify({ confirm_name: confirmName }),
+    }),
   placePaperTrade: (body: PaperOrder) =>
     request<{ trade: PaperTrade; note: string }>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
   changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string }) =>

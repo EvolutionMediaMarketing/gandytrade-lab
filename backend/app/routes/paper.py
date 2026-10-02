@@ -1,6 +1,6 @@
 """Paper trading: accounts, orders, open trades, the journal and the fill log."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from ..deps import current_user
 from ..market.providers.base import ProviderError
 from ..market.directory import lookup
 from ..models import PaperAccount, PaperEvent, PaperTrade, User
+from .. import sessions
 from ..paper import auto
 from ..paper import service as paper
 from ..models import AutoRun
@@ -142,6 +143,24 @@ def change_account(account_id: int, body: AccountChange, db: Session = Depends(g
         acct.peak_equity = state["equity"]  # the limit is measured afresh from here
     db.commit()
     return _account_dict(db, acct, {})
+
+
+class DeleteAccount(BaseModel):
+    confirm_name: str = Field(max_length=60)
+
+
+@router.post("/accounts/{account_id}/delete")
+def delete_account(account_id: int, body: DeleteAccount, request: Request, db: Session = Depends(get_session),
+                   user: User = Depends(current_user)) -> dict:
+    try:
+        name = paper.get_account(db, user, account_id).name
+        counts = paper.delete_account(db, user, account_id, body.confirm_name)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sessions.audit(db, "paper_account_deleted", user.username, sessions.client_ip(request),
+                   f"{name}: {counts['trades']} trade(s), {counts['runs']} automatic run(s)")
+    db.commit()
+    return {"ok": True, **counts}
 
 
 @router.get("/accounts/{account_id}")

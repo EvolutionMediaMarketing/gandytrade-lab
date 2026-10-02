@@ -484,3 +484,4 @@ ul.plain { margin: 0; padding-left: 18px; }
 .facts.compact { grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; margin: 0; }
 .research-all td, .research-all th { white-space: nowrap; }
 @media (max-width: 640px) { .research-cards { grid-template-columns: 1fr; } .page.research { padding: 10px; } }
+.link-button.danger-link { color: #f87171; }

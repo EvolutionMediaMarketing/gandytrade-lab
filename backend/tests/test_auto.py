@@ -282,3 +282,22 @@ def test_uk_shares_cannot_run_automatically(signed_in, feed):
     r = _start(signed_in, cash, symbol="BP.LON", timeframe="1d")
     assert "UK shares" in r.json()["detail"]
     assert r.status_code == 400, r.text
+
+
+def test_delete_account_needs_its_name_and_removes_everything(signed_in, feed):
+    from app.db import new_session
+    from app.models import AutoRun, PaperEvent, PaperTrade, SecurityEvent
+
+    cfd = _accounts(signed_in)["cfd"]
+    run = _start(signed_in, cfd["id"]).json()
+    feed.add(101)
+    _step(run["id"])
+    r = signed_in.post(f"/api/paper/accounts/{cfd['id']}/delete", json={"confirm_name": "wrong"})
+    assert r.status_code == 400 and "nothing was deleted" in r.json()["detail"]
+    r = signed_in.post(f"/api/paper/accounts/{cfd['id']}/delete", json={"confirm_name": cfd["name"]})
+    assert r.status_code == 200 and r.json()["trades"] == 1 and r.json()["runs"] == 1
+    assert "cfd" not in _accounts(signed_in)
+    db = new_session()
+    assert db.query(PaperTrade).count() == 0 and db.query(PaperEvent).count() == 0 and db.query(AutoRun).count() == 0
+    assert db.query(SecurityEvent).filter(SecurityEvent.event == "paper_account_deleted").count() == 1
+    db.close()

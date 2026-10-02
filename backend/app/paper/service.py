@@ -473,3 +473,24 @@ def check_trade(db: Session, acct: PaperAccount, t: PaperTrade, q: Quote) -> boo
         close(db, acct, t, q.mid, q.ts, q.source, "Target reached", "target")
         return True
     return False
+
+
+# --- Deleting an account -----------------------------------------------------------------------
+
+def delete_account(db: Session, user: User, account_id: int, confirm_name: str) -> dict:
+    """Delete a paper account with all its trades, journal entries, fill records and automatic runs.
+    You must type the account's name to confirm. This can't be undone."""
+    from ..models import AutoRun
+
+    acct = get_account(db, user, account_id)
+    if confirm_name.strip() != acct.name.strip():
+        raise PaperError("The name you typed doesn't match the account's name, so nothing was deleted.")
+    trade_ids = list(db.scalars(select(PaperTrade.id).where(PaperTrade.account_id == acct.id)))
+    counts = {"trades": len(trade_ids),
+              "runs": len(list(db.scalars(select(AutoRun.id).where(AutoRun.account_id == acct.id))))}
+    if trade_ids:
+        db.query(PaperEvent).filter(PaperEvent.trade_id.in_(trade_ids)).delete(synchronize_session=False)
+    db.query(PaperTrade).filter(PaperTrade.account_id == acct.id).delete(synchronize_session=False)
+    db.query(AutoRun).filter(AutoRun.account_id == acct.id).delete(synchronize_session=False)
+    db.delete(acct)
+    return counts
