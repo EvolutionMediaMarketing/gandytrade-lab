@@ -31,6 +31,7 @@ STALE_AFTER = {"oanda": 20 * 60, "twelvedata": 30 * 60}
 # Candles used to watch open trades. Twelve Data's free allowance is limited, so stocks use 15-minute candles.
 WATCH_TIMEFRAME = {"oanda": "1m", "twelvedata": "15m", "alphavantage": "1d"}
 REVENGE_MINUTES = 30
+MAX_OPEN_RISK_PCT = 10.0  # the most an account may ever have at risk at once
 FLAG_POINTS = 25
 
 
@@ -87,6 +88,7 @@ def ensure_default_accounts(db: Session, user: User) -> None:
     for name, mode in (("Shares (no leverage)", "cash"), ("CFD / spread bet", "cfd")):
         db.add(PaperAccount(user_id=user.id, name=name, mode=mode, starting_balance=200.0, cash=200.0,
                             peak_equity=200.0, deposits=0.0, risk_pct=1.0, daily_loss_pct=3.0, max_drawdown_pct=20.0,
+                            max_open_risk_pct=MAX_OPEN_RISK_PCT,
                             day="", day_start_equity=200.0, halted=False, halt_reason="", archived=False))
     db.commit()
 
@@ -97,6 +99,7 @@ def create_account(db: Session, user: User, name: str, balance: float, mode: str
     acct = PaperAccount(user_id=user.id, name=name.strip()[:60] or "Paper account", mode=mode,
                         starting_balance=balance, cash=balance, peak_equity=balance, deposits=0.0,
                         risk_pct=RiskSettings(risk_pct).cleaned().risk_pct, daily_loss_pct=3.0, max_drawdown_pct=20.0,
+                        max_open_risk_pct=MAX_OPEN_RISK_PCT,
                         day="", day_start_equity=balance, halted=False, halt_reason="", archived=False)
     db.add(acct)
     db.commit()
@@ -165,6 +168,21 @@ def account_state(db: Session, acct: PaperAccount, quotes: dict | None = None) -
         used = sum(v.value_gbp / v.cap for v in valued)  # margin held
         buying_power = max(0.0, equity - used)
     return {"equity": equity, "used": used, "buying_power": buying_power, "valued": valued}
+
+
+def trade_risk(t: PaperTrade) -> float:
+    """What this open trade would lose (in £, before costs) if its stop-loss were hit now.
+    Zero once the stop has been moved to break-even or into profit."""
+    return max(0.0, (t.entry_price - t.stop) * t.side * t.units / (t.entry_rate or 1.0))
+
+
+def open_risk(db: Session, acct: PaperAccount, exclude: int | None = None) -> float:
+    return sum(trade_risk(t) for t in open_trades(db, acct) if t.id != exclude)
+
+
+def open_risk_limit(acct: PaperAccount, equity: float) -> float:
+    pct = min(MAX_OPEN_RISK_PCT, max(1.0, acct.max_open_risk_pct or MAX_OPEN_RISK_PCT))
+    return max(0.0, equity) * pct / 100
 
 
 def update_limits(acct: PaperAccount, equity: float) -> None:
@@ -268,6 +286,21 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
     if units <= 0 or units * fill / rate < 0.01:
         raise PaperError("Not enough buying power left in this account for this trade.")
 
+    # Open-risk limit: everything at risk across open trades stays within (by default) 10% of the account.
+    already = open_risk(db, acct)
+    limit = open_risk_limit(acct, state["equity"])
+    room = limit - already
+    loss_per_unit = abs(fill - req.stop) / rate
+    if room < max(0.01, 0.1 * d.units * loss_per_unit):
+        raise PaperError(
+            f"Open-risk limit reached: £{already:,.2f} is already at risk across your open trades, and this account "
+            f"allows £{limit:,.2f} ({acct.max_open_risk_pct:g}% of £{state['equity']:,.2f}). "
+            "Close a trade, or move a stop-loss closer, before opening another.")
+    if units * loss_per_unit > room:
+        units = room / loss_per_unit
+        note = (f"Smaller than planned: the open-risk limit ({acct.max_open_risk_pct:g}% of the account) "
+                f"left room for £{room:,.2f} of risk.")
+
     flags = []
     if (req.side > 0 and req.trend == "down") or (req.side < 0 and req.trend == "up"):
         flags.append("Traded against the trend you identified")
@@ -321,6 +354,14 @@ def modify(db: Session, user: User, trade_id: int, stop: float | None = None, ta
             if (q.mid - stop) * t.side <= 0:
                 raise PaperError("That stop-loss is past the current price; it would close the trade straight away. Close it instead.")
             widened = (t.stop - stop) * t.side > 0
+            if widened:
+                state = account_state(db, acct)
+                new_risk = max(0.0, (t.entry_price - stop) * t.side * t.units / (t.entry_rate or 1.0))
+                limit = open_risk_limit(acct, state["equity"])
+                if open_risk(db, acct, exclude=t.id) + new_risk > limit + 1e-9:
+                    raise PaperError(
+                        f"That would put more than {acct.max_open_risk_pct:g}% of the account (£{limit:,.2f}) at risk "
+                        "across your open trades, so the stop-loss can't move that far.")
             db.add(PaperEvent(trade_id=t.id, kind="stop_moved", mid=q.mid, quote_ts=q.ts, quote_source=q.source,
                               detail=f"{t.stop:g} → {stop:g}" + (" (further away)" if widened else "")))
             if widened and "Moved the stop-loss further away" not in (t.rule_flags or []):

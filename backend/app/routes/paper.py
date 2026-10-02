@@ -65,7 +65,10 @@ def _account_dict(db: Session, acct: PaperAccount, quotes: dict, detail: bool = 
         "returnPct": round((state["equity"] - funded) / funded * 100, 2) if funded else 0.0,
         "buyingPower": round(state["buying_power"], 2), "used": round(state["used"], 2),
         "riskPct": acct.risk_pct, "dailyLossPct": acct.daily_loss_pct, "maxDrawdownPct": acct.max_drawdown_pct,
-        "peakEquity": round(acct.peak_equity, 2), "halted": acct.halted, "haltReason": acct.halt_reason,
+        "peakEquity": round(acct.peak_equity, 2),
+        "maxOpenRiskPct": acct.max_open_risk_pct,
+        "openRisk": round(paper.open_risk(db, acct), 2),
+        "openRiskLimit": round(paper.open_risk_limit(acct, state["equity"]), 2), "halted": acct.halted, "haltReason": acct.halt_reason,
         "archived": acct.archived, "openCount": len(state["valued"]),
         "block": paper.entry_block(acct, state["equity"]),
     }
@@ -104,6 +107,9 @@ def new_account(body: NewAccount, db: Session = Depends(get_session), user: User
 class AccountChange(BaseModel):
     name: str | None = Field(None, max_length=60)
     risk_pct: float | None = Field(None, ge=0.1, le=2.0)
+    max_open_risk_pct: float | None = Field(None, ge=1.0, le=10.0)  # can be lowered, never raised above 10%
+    daily_loss_pct: float | None = Field(None, ge=0.5, le=5.0)
+    max_drawdown_pct: float | None = Field(None, ge=5.0, le=25.0)
     archived: bool | None = None
     resume: bool = False  # lift a drawdown pause after reviewing it
 
@@ -119,6 +125,12 @@ def change_account(account_id: int, body: AccountChange, db: Session = Depends(g
         acct.name = body.name.strip()[:60]
     if body.risk_pct is not None:
         acct.risk_pct = body.risk_pct
+    if body.max_open_risk_pct is not None:
+        acct.max_open_risk_pct = body.max_open_risk_pct
+    if body.daily_loss_pct is not None:
+        acct.daily_loss_pct = body.daily_loss_pct
+    if body.max_drawdown_pct is not None:
+        acct.max_drawdown_pct = body.max_drawdown_pct
     if body.archived is not None:
         acct.archived = body.archived
     if body.resume and acct.halted:

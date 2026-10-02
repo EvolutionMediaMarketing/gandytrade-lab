@@ -221,3 +221,66 @@ def test_buying_power_limits_cash_accounts(signed_in, market):
     r = order(signed_in, cash, symbol="EUR_USD", stop=1.2499, target=None)
     t = r.json()["trade"]
     assert t["valueGbp"] <= 200.01
+
+
+# --- Open-risk limit (10% of the account) ------------------------------------------------------
+
+def test_open_risk_limit_caps_the_total_at_risk(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    signed_in.patch(f"/api/paper/accounts/{cfd}", json={"risk_pct": 2.0})
+    placed = []
+    for _ in range(7):
+        r = order(signed_in, cfd, target=None)
+        if r.status_code != 200:
+            break
+        placed.append(r.json()["trade"])
+    # £4 a trade (2% of £200) against a £20 limit: five trades fit, the sixth is refused.
+    assert len(placed) == 5
+    assert "Open-risk limit reached" in r.json()["detail"]
+    acc = signed_in.get(f"/api/paper/accounts/{cfd}").json()
+    assert acc["openRisk"] <= acc["openRiskLimit"] + 0.01 and acc["openRiskLimit"] == pytest.approx(20.0, abs=0.1)
+
+
+def test_last_trade_is_trimmed_to_fit(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    signed_in.patch(f"/api/paper/accounts/{cfd}", json={"risk_pct": 2.0, "max_open_risk_pct": 5})
+    first = order(signed_in, cfd, target=None).json()["trade"]  # £4
+    second = order(signed_in, cfd, target=None).json()["trade"]  # £4
+    third = order(signed_in, cfd, target=None)  # only about £2 of room left
+    assert third.status_code == 200
+    assert "open-risk limit" in third.json()["note"]
+    total = first["riskGbp"] + second["riskGbp"] + third.json()["trade"]["riskGbp"]
+    assert total == pytest.approx(10.0, abs=0.05)  # 5% of the £200 account
+
+
+def test_widening_a_stop_past_the_limit_is_refused(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    signed_in.patch(f"/api/paper/accounts/{cfd}", json={"max_open_risk_pct": 2})
+    t = order(signed_in, cfd, target=None).json()["trade"]  # risks £2, limit £4
+    assert signed_in.patch(f"/api/paper/trades/{t['id']}", json={"stop": 1.2350}).status_code == 200  # £3: allowed
+    r = signed_in.patch(f"/api/paper/trades/{t['id']}", json={"stop": 1.2000})  # £10: over the limit
+    assert r.status_code == 400 and "can't move that far" in r.json()["detail"]
+
+
+def test_limit_cannot_be_raised_above_ten_percent(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    assert signed_in.patch(f"/api/paper/accounts/{cfd}", json={"max_open_risk_pct": 25}).status_code == 422
+
+
+def test_stop_moved_into_profit_frees_up_risk(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    t = order(signed_in, cfd, target=None).json()["trade"]
+    market.mid = 1.2600
+    signed_in.patch(f"/api/paper/trades/{t['id']}", json={"stop": 1.2550})  # above the entry: nothing at risk
+    assert signed_in.get(f"/api/paper/accounts/{cfd}").json()["openRisk"] == 0
+
+
+def test_safeguard_settings_have_safe_ranges(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    ok = signed_in.patch(f"/api/paper/accounts/{cfd}", json={"risk_pct": 0.5, "max_open_risk_pct": 6,
+                                                            "daily_loss_pct": 2, "max_drawdown_pct": 15})
+    assert ok.status_code == 200
+    a = ok.json()
+    assert (a["riskPct"], a["maxOpenRiskPct"], a["dailyLossPct"], a["maxDrawdownPct"]) == (0.5, 6, 2, 15)
+    for bad in ({"risk_pct": 3}, {"daily_loss_pct": 8}, {"max_drawdown_pct": 40}, {"max_open_risk_pct": 0.5}):
+        assert signed_in.patch(f"/api/paper/accounts/{cfd}", json=bad).status_code == 422, bad

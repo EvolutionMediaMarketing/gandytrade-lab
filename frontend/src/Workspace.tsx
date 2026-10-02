@@ -6,6 +6,7 @@ import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import type { TradePlan } from "./PlanZones";
+import SettingsPage from "./SettingsPage";
 import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import ToolsPage from "./ToolsPage";
@@ -72,6 +73,7 @@ const PAGES = [
   { key: "paper", label: "Paper" },
   { key: "tools", label: "Tools" },
   { key: "learn", label: "Learn" },
+  { key: "settings", label: "Settings" },
 ] as const;
 type Page = (typeof PAGES)[number]["key"];
 
@@ -283,6 +285,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       {page === "tools" && (
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />
       )}
+      {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (
         <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} />
       )}

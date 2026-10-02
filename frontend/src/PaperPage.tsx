@@ -80,7 +80,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
           <>
             <header className="result-head">
               <h2>{detail.name} <span className="muted">{detail.mode === "cash" ? "Real shares, no leverage" : "CFD / spread bet"}</span></h2>
-              <p className="muted small-text">Started with {money(detail.startingBalance, 0)}{detail.deposits ? ` plus ${money(detail.deposits, 0)} added` : ""} · risk {detail.riskPct}% a trade · daily loss limit {detail.dailyLossPct}% · pauses after a {detail.maxDrawdownPct}% fall</p>
+              <p className="muted small-text">Started with {money(detail.startingBalance, 0)}{detail.deposits ? ` plus ${money(detail.deposits, 0)} added` : ""} · risk {detail.riskPct}% a trade · at most {detail.maxOpenRiskPct}% at risk at once · daily loss limit {detail.dailyLossPct}% · pauses after a {detail.maxDrawdownPct}% fall · <a href="#/settings">change</a></p>
             </header>
             {detail.halted && (
               <div className="warn stop">
@@ -98,7 +98,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
               <Stat label="Account value" value={money(detail.equity)} sub={`Cash ${money(detail.cash)}`} />
               <Stat label="Return" value={pct(detail.returnPct)} tone={detail.returnPct} />
               <Stat label={detail.mode === "cash" ? "Free to invest" : "Free margin"} value={money(detail.buyingPower)} />
-              <Stat label="Open trades" value={String(detail.open?.length ?? 0)} sub={`Closed ${detail.closed?.length ?? 0}`} />
+              <Stat label="At risk now" value={money(detail.openRisk)} sub={`Limit ${money(detail.openRiskLimit)} (${detail.maxOpenRiskPct}%)`} />
             </div>
 
             <div className="card">

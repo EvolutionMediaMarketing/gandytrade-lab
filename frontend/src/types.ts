@@ -365,6 +365,9 @@ export interface PaperAccount {
   dailyLossPct: number;
   maxDrawdownPct: number;
   peakEquity: number;
+  maxOpenRiskPct: number;
+  openRisk: number;
+  openRiskLimit: number;
   halted: boolean;
   haltReason: string;
   archived: boolean;

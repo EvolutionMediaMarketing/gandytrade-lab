@@ -143,6 +143,8 @@ class PaperAccount(Base):
     risk_pct: Mapped[float] = mapped_column(Float, default=1.0)
     daily_loss_pct: Mapped[float] = mapped_column(Float, default=3.0)
     max_drawdown_pct: Mapped[float] = mapped_column(Float, default=20.0)
+    # Most the account can have at risk at once: the total lost if every open trade hit its stop-loss.
+    max_open_risk_pct: Mapped[float] = mapped_column(Float, default=10.0)
     peak_equity: Mapped[float] = mapped_column(Float)
     day: Mapped[str] = mapped_column(String(10), default="")  # UK date the day-start figures belong to
     day_start_equity: Mapped[float] = mapped_column(Float, default=0.0)

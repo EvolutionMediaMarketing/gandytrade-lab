@@ -263,6 +263,12 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
         </select>
       </label>
       {account?.block && <p className="warn stop">{account.block}</p>}
+      {account && !account.block && (
+        <p className="muted small-text">
+          At risk now on this account: {money(account.openRisk)} of {money(account.openRiskLimit)} allowed ({account.maxOpenRiskPct}%).
+          {account.openRiskLimit - account.openRisk < (out?.riskGbp ?? 0) && " This trade will be trimmed to fit, or refused if there's no room."}
+        </p>
+      )}
 
       <div className="form-row">
         <span className="field-label">Which way is the market trending on this chart?</span>

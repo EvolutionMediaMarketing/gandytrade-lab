@@ -65,7 +65,10 @@ export const api = {
   paperAccount: (id: number, background = false) => request<PaperAccount>(`/api/paper/accounts/${id}`, {}, background),
   newPaperAccount: (body: { name: string; starting_balance: number; mode: string; risk_pct: number }) =>
     request<PaperAccount>("/api/paper/accounts", { method: "POST", body: JSON.stringify(body) }),
-  changePaperAccount: (id: number, body: { name?: string; risk_pct?: number; archived?: boolean; resume?: boolean }) =>
+  changePaperAccount: (id: number, body: {
+    name?: string; risk_pct?: number; max_open_risk_pct?: number; daily_loss_pct?: number; max_drawdown_pct?: number;
+    archived?: boolean; resume?: boolean;
+  }) =>
     request<PaperAccount>(`/api/paper/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   placePaperTrade: (body: PaperOrder) =>
     request<{ trade: PaperTrade; note: string }>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
