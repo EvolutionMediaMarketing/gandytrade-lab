@@ -71,8 +71,9 @@ def check_fresh(q: Quote, symbol: Symbol) -> None:
         return
     age = time.time() - q.ts
     if age > limit:
-        when = datetime.fromtimestamp(q.ts, tz=UK).strftime("%a %d %b %H:%M")
-        raise PaperError(f"The market looks closed: the last price was at {when} UK time. Paper orders fill only on live prices.")
+        from ..market.hours import closed_message
+
+        raise PaperError(closed_message(symbol.provider, symbol.asset_class, datetime.fromtimestamp(q.ts, tz=UK)))
 
 
 def _book(db: Session, symbol: Symbol, mode: str) -> tuple[Book, Converter]:
