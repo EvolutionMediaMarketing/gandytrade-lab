@@ -4,6 +4,7 @@ import ChartView from "./ChartView";
 import BacktestPage from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
+import PaperPage from "./PaperPage";
 import type { TradePlan } from "./PlanZones";
 import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
@@ -68,6 +69,7 @@ function defaults(def: IndicatorDef): Record<string, number> {
 const PAGES = [
   { key: "charts", label: "Charts" },
   { key: "backtest", label: "Backtest" },
+  { key: "paper", label: "Paper" },
   { key: "tools", label: "Tools" },
   { key: "learn", label: "Learn" },
 ] as const;
@@ -275,6 +277,9 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <BacktestPage key={JSON.stringify(backtestInit ?? {})} catalogue={catalogue} favourites={favourites}
           onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit} />
       )}
+      {page === "paper" && (
+        <PaperPage onAuthError={handleAuth} onOpenChart={(symbol) => { update({ symbol }); go("charts"); }} />
+      )}
       {page === "tools" && (
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />
       )}
@@ -357,7 +362,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
         {panel === "plan" && data && (
           <aside className="panel" aria-label="Trade planner">
-            <TradePlanner symbol={data.symbol} plan={plan} onPlanChange={setPlan} onStartFresh={startPlan} onAuthError={handleAuth} />
+            <TradePlanner symbol={data.symbol} timeframe={prefs.timeframe} plan={plan} onPlanChange={setPlan} onStartFresh={startPlan}
+              onAuthError={handleAuth} onPlaced={() => undefined} />
           </aside>
         )}
         {panel === "signals" && (

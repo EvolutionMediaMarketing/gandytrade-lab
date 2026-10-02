@@ -1,0 +1,211 @@
+"""Paper trading: accounts, orders, open trades, the journal and the fill log."""
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..db import get_session
+from ..deps import current_user
+from ..market.providers.base import ProviderError
+from ..market.directory import lookup
+from ..models import PaperAccount, PaperEvent, PaperTrade, User
+from ..paper import service as paper
+
+router = APIRouter(prefix="/api/paper", tags=["paper"])
+MOODS = {"", "calm", "confident", "unsure", "anxious", "bored", "fomo", "frustrated"}
+
+
+def _fail(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=400 if isinstance(exc, (paper.PaperError, ValueError)) else 502, detail=str(exc))
+
+
+_precision_cache: dict[str, tuple[int, str]] = {}
+
+
+def _market(db: Session, code: str) -> tuple[int, str]:
+    if code not in _precision_cache:
+        try:
+            s = lookup(db, code)
+            _precision_cache[code] = (s.precision, s.name)
+        except ValueError:
+            _precision_cache[code] = (5, code)
+    return _precision_cache[code]
+
+
+def _trade_dict(t: PaperTrade, v: "paper.Valued | None" = None, db: Session | None = None) -> dict:
+    d = {
+        "id": t.id, "symbol": t.symbol, "timeframe": t.timeframe, "side": "long" if t.side > 0 else "short",
+        "status": t.status, "units": t.units, "entryPrice": t.entry_price, "entryMid": t.entry_mid,
+        "entryQuoteTs": t.entry_quote_ts, "entryTime": t.entry_time.isoformat(), "stop": t.stop,
+        "initialStop": t.initial_stop, "target": t.target, "riskGbp": round(t.risk_gbp, 2),
+        "exitPrice": t.exit_price, "exitTime": t.exit_time.isoformat() if t.exit_time else None,
+        "exitReason": t.exit_reason, "pnl": round(t.pnl_gbp, 2) if t.pnl_gbp is not None else None,
+        "costs": round(t.costs_gbp, 2) if t.costs_gbp is not None else None,
+        "r": round(t.pnl_gbp / t.risk_gbp, 2) if t.pnl_gbp is not None and t.risk_gbp > 0 else None,
+        "source": t.source, "strategy": t.strategy, "trend": t.trend, "reason": t.reason, "mood": t.mood,
+        "notes": t.notes, "lesson": t.lesson, "ruleFlags": t.rule_flags or [],
+        "ruleScore": t.rule_score if t.rule_score is not None else paper.score(t.rule_flags or []),
+    }
+    if db is not None:
+        d["precision"], d["name"] = _market(db, t.symbol)
+    if v is not None:
+        d.update({"price": v.price, "priceTime": v.quote_ts, "unrealised": round(v.unrealised, 2),
+                  "valueGbp": round(v.value_gbp, 2), "name": v.symbol.name, "precision": v.symbol.precision,
+                  "sample": v.sample})
+    return d
+
+
+def _account_dict(db: Session, acct: PaperAccount, quotes: dict, detail: bool = False) -> dict:
+    state = paper.account_state(db, acct, quotes)
+    funded = acct.starting_balance + acct.deposits
+    out = {
+        "id": acct.id, "name": acct.name, "mode": acct.mode, "startingBalance": acct.starting_balance,
+        "deposits": acct.deposits, "cash": round(acct.cash, 2), "equity": round(state["equity"], 2),
+        "returnPct": round((state["equity"] - funded) / funded * 100, 2) if funded else 0.0,
+        "buyingPower": round(state["buying_power"], 2), "used": round(state["used"], 2),
+        "riskPct": acct.risk_pct, "dailyLossPct": acct.daily_loss_pct, "maxDrawdownPct": acct.max_drawdown_pct,
+        "peakEquity": round(acct.peak_equity, 2), "halted": acct.halted, "haltReason": acct.halt_reason,
+        "archived": acct.archived, "openCount": len(state["valued"]),
+        "block": paper.entry_block(acct, state["equity"]),
+    }
+    if detail:
+        out["open"] = [_trade_dict(v.trade, v) for v in state["valued"]]
+        closed = db.scalars(select(PaperTrade).where(PaperTrade.account_id == acct.id, PaperTrade.status == "closed")
+                            .order_by(PaperTrade.exit_time.desc()).limit(300)).all()
+        out["closed"] = [_trade_dict(t, db=db) for t in closed]
+    return out
+
+
+@router.get("/accounts")
+def list_accounts(db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    paper.ensure_default_accounts(db, user)
+    quotes: dict = {}
+    accts = db.scalars(select(PaperAccount).where(PaperAccount.user_id == user.id).order_by(PaperAccount.id)).all()
+    return {"accounts": [_account_dict(db, a, quotes) for a in accts]}
+
+
+class NewAccount(BaseModel):
+    name: str = Field(max_length=60)
+    starting_balance: float = Field(200, ge=10, le=10_000_000)
+    mode: str = Field(max_length=8)
+    risk_pct: float = Field(1.0, ge=0.1, le=2.0)
+
+
+@router.post("/accounts")
+def new_account(body: NewAccount, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.create_account(db, user, body.name, body.starting_balance, body.mode, body.risk_pct)
+    except paper.PaperError as exc:
+        raise _fail(exc) from exc
+    return _account_dict(db, acct, {})
+
+
+class AccountChange(BaseModel):
+    name: str | None = Field(None, max_length=60)
+    risk_pct: float | None = Field(None, ge=0.1, le=2.0)
+    archived: bool | None = None
+    resume: bool = False  # lift a drawdown pause after reviewing it
+
+
+@router.patch("/accounts/{account_id}")
+def change_account(account_id: int, body: AccountChange, db: Session = Depends(get_session),
+                   user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.get_account(db, user, account_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if body.name:
+        acct.name = body.name.strip()[:60]
+    if body.risk_pct is not None:
+        acct.risk_pct = body.risk_pct
+    if body.archived is not None:
+        acct.archived = body.archived
+    if body.resume and acct.halted:
+        state = paper.account_state(db, acct)
+        acct.halted, acct.halt_reason = False, ""
+        acct.peak_equity = state["equity"]  # the limit is measured afresh from here
+    db.commit()
+    return _account_dict(db, acct, {})
+
+
+@router.get("/accounts/{account_id}")
+def account_detail(account_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.get_account(db, user, account_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _account_dict(db, acct, {}, detail=True)
+
+
+class OrderBody(BaseModel):
+    account_id: int
+    symbol: str = Field(max_length=32)
+    side: str = Field(max_length=5)  # long | short
+    stop: float = Field(gt=0)
+    target: float | None = Field(None, gt=0)
+    timeframe: str = Field("", max_length=4)
+    trend: str = Field("", max_length=10)
+    reason: str = Field("", max_length=300)
+    mood: str = Field("", max_length=20)
+    confirmed: bool = False
+
+
+@router.post("/orders")
+def open_paper_trade(body: OrderBody, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    if body.mood not in MOODS:
+        raise HTTPException(status_code=422, detail="Unknown mood.")
+    req = paper.OrderRequest(account_id=body.account_id, symbol=body.symbol, side=1 if body.side == "long" else -1,
+                             stop=body.stop, target=body.target, timeframe=body.timeframe, trend=body.trend,
+                             reason=body.reason, mood=body.mood, confirmed=body.confirmed)
+    try:
+        t = paper.open_trade(db, user, req)
+    except (paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    acct = db.get(PaperAccount, t.account_id)
+    return {"trade": _trade_dict(t, paper.value_trade(db, acct, t)), "note": _last_note(db, t.id)}
+
+
+def _last_note(db: Session, trade_id: int) -> str:
+    ev = db.scalar(select(PaperEvent).where(PaperEvent.trade_id == trade_id).order_by(PaperEvent.id.desc()).limit(1))
+    return ev.detail if ev else ""
+
+
+class TradeChange(BaseModel):
+    stop: float | None = Field(None, gt=0)
+    target: float | None = Field(None, gt=0)
+    clear_target: bool = False
+    notes: str | None = Field(None, max_length=2000)
+    lesson: str | None = Field(None, max_length=500)
+    mood: str | None = Field(None, max_length=20)
+
+
+@router.patch("/trades/{trade_id}")
+def change_trade(trade_id: int, body: TradeChange, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    if body.mood is not None and body.mood not in MOODS:
+        raise HTTPException(status_code=422, detail="Unknown mood.")
+    try:
+        t = paper.modify(db, user, trade_id, body.stop, body.target, body.clear_target, body.notes, body.lesson, body.mood)
+    except (paper.PaperError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return {"trade": _trade_dict(t, db=db)}
+
+
+@router.post("/trades/{trade_id}/close")
+def close_trade(trade_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        t = paper.close_now(db, user, trade_id)
+    except (paper.PaperError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return {"trade": _trade_dict(t, db=db)}
+
+
+@router.get("/trades/{trade_id}/events")
+def trade_events(trade_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        t, _ = paper.get_trade(db, user, trade_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    events = db.scalars(select(PaperEvent).where(PaperEvent.trade_id == t.id).order_by(PaperEvent.id)).all()
+    return {"events": [{"at": e.at.isoformat(), "kind": e.kind, "price": e.price, "mid": e.mid, "quoteTs": e.quote_ts,
+                        "source": e.quote_source, "detail": e.detail} for e in events]}

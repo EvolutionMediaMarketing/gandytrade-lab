@@ -1,0 +1,24 @@
+# GandyTrade Lab background worker: watches open paper trades and closes them at their
+# stop-loss or target. Same image and settings as the app; no ports are published.
+[Unit]
+Description=GandyTrade Lab paper trading worker
+Requires=gandytrade-db.service
+After=gandytrade-db.service gandytrade-app.service
+
+[Container]
+Image=localhost/gandytrade-app:latest
+ContainerName=gandytrade-worker
+Network=gandytrade.network
+EnvironmentFile=__CONF__/app.env
+Exec=python -m app.worker
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+__WORKER_LIMITS__
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

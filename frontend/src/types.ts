@@ -307,3 +307,92 @@ export interface SignalsResponse {
   buyHold: { returnPct: number; annualPct: number | null };
   strategies: SignalCard[];
 }
+
+// --- Paper trading ---
+
+export interface PaperTrade {
+  id: number;
+  symbol: string;
+  timeframe: string;
+  side: "long" | "short";
+  status: "open" | "closed";
+  units: number;
+  entryPrice: number;
+  entryMid: number;
+  entryQuoteTs: number;
+  entryTime: string;
+  stop: number;
+  initialStop: number;
+  target: number | null;
+  riskGbp: number;
+  exitPrice: number | null;
+  exitTime: string | null;
+  exitReason: string;
+  pnl: number | null;
+  costs: number | null;
+  r: number | null;
+  source: string;
+  strategy: string;
+  trend: string;
+  reason: string;
+  mood: string;
+  notes: string;
+  lesson: string;
+  ruleFlags: string[];
+  ruleScore: number;
+  // open trades only
+  price?: number | null;
+  priceTime?: number | null;
+  unrealised?: number;
+  valueGbp?: number;
+  name?: string;
+  precision?: number;
+  sample?: boolean;
+}
+
+export interface PaperAccount {
+  id: number;
+  name: string;
+  mode: "cash" | "cfd";
+  startingBalance: number;
+  deposits: number;
+  cash: number;
+  equity: number;
+  returnPct: number;
+  buyingPower: number;
+  used: number;
+  riskPct: number;
+  dailyLossPct: number;
+  maxDrawdownPct: number;
+  peakEquity: number;
+  halted: boolean;
+  haltReason: string;
+  archived: boolean;
+  openCount: number;
+  block: string;
+  open?: PaperTrade[];
+  closed?: PaperTrade[];
+}
+
+export interface PaperEvent {
+  at: string;
+  kind: string;
+  price: number | null;
+  mid: number | null;
+  quoteTs: number | null;
+  source: string;
+  detail: string;
+}
+
+export interface PaperOrder {
+  account_id: number;
+  symbol: string;
+  side: "long" | "short";
+  stop: number;
+  target: number | null;
+  timeframe: string;
+  trend: string;
+  reason: string;
+  mood: string;
+  confirmed: boolean;
+}

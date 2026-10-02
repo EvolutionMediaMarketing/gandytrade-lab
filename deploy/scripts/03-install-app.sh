@@ -54,12 +54,14 @@ limits() {  # $1 memory, $2 cpus, $3 max processes
 }
 APP_LIMITS=$(limits 1g 1.0 256)
 DB_LIMITS=$(limits 512m 1.0 200)
+WORKER_LIMITS=$(limits 512m 0.5 128)
 ok "Resource caps: ${controllers:-none available}"
 
 # 4. Install the service definitions and start everything.
 for f in "$REPO"/deploy/quadlet/*; do
   sed -e "s#__CONF__#$CONF#g" -e "s#__PORT__#$APP_PORT#g" \
-      -e "s#__APP_LIMITS__#$APP_LIMITS#g" -e "s#__DB_LIMITS__#$DB_LIMITS#g" "$f" > "$UNITS/$(basename "$f")"
+      -e "s#__APP_LIMITS__#$APP_LIMITS#g" -e "s#__DB_LIMITS__#$DB_LIMITS#g" \
+      -e "s#__WORKER_LIMITS__#$WORKER_LIMITS#g" "$f" > "$UNITS/$(basename "$f")"
 done
 systemctl --user daemon-reload
 systemctl --user restart gandytrade-db.service
@@ -69,6 +71,15 @@ echo "Waiting for the app to start..."
 for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:$APP_PORT/api/health" >/dev/null 2>&1; then
     ok "App is running on 127.0.0.1:$APP_PORT"
+    # The worker starts once the app has upgraded the database.
+    systemctl --user restart gandytrade-worker.service
+    sleep 3
+    if systemctl --user is-active --quiet gandytrade-worker.service; then
+      ok "Paper trading worker is running"
+    else
+      warn "Paper trading worker didn't start. Recent logs:"
+      journalctl --user -u gandytrade-worker.service -n 20 --no-pager || podman logs --tail 20 gandytrade-worker || true
+    fi
     if [ ! -s /etc/gandytrade/proxy-secret.conf ] 2>/dev/null && ! grep -q '^GT_PROXY_SECRET=' "$CONF/app.env"; then
       echo
       echo "First install? Next: create your login (as root):"

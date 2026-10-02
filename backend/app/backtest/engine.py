@@ -276,3 +276,7 @@ def buy_and_hold(bars: list[Bar], settings: Settings, conv: Converter) -> Result
     t.costs_gbp = t.gross_gbp - t.pnl_gbp
     equity[-1] = (last.ts, final)
     return Result([t], equity)
+
+
+# Shared with paper trading, so paper fills and costs follow exactly the same rules as backtests.
+Book = _Book

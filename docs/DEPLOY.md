@@ -115,6 +115,8 @@ bash deploy/scripts/as-app-user.sh deploy/scripts/update.sh
 | Change app password | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli set-password` |
 | Change gate password | `htpasswd -B /etc/gandytrade/htpasswd <gate-username>` |
 | Sign out every browser now (lost laptop or phone) | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli sign-out-everywhere` |
+| Is the paper trading worker running? | `bash deploy/scripts/as-app-user.sh systemctl --user status gandytrade-worker` |
+| Worker logs (stops and targets it closed) | `bash deploy/scripts/as-app-user.sh podman logs --tail 50 gandytrade-worker` |
 | Who signed in, failed attempts, changes | `bash deploy/scripts/as-app-user.sh podman exec -it gandytrade-app python -m app.cli audit` |
 
 ## Security settings in place

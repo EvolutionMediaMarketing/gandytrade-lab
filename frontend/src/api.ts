@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, Quote, SignalsResponse, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, PositionSize, Quote, SignalsResponse, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -61,6 +61,18 @@ export const api = {
     request<BacktestResult>("/api/backtests", { method: "POST", body: JSON.stringify(body) }),
   backtests: () => request<{ runs: BacktestSummary[] }>("/api/backtests"),
   backtest: (id: number) => request<BacktestResult>(`/api/backtests/${id}`),
+  paperAccounts: () => request<{ accounts: PaperAccount[] }>("/api/paper/accounts"),
+  paperAccount: (id: number, background = false) => request<PaperAccount>(`/api/paper/accounts/${id}`, {}, background),
+  newPaperAccount: (body: { name: string; starting_balance: number; mode: string; risk_pct: number }) =>
+    request<PaperAccount>("/api/paper/accounts", { method: "POST", body: JSON.stringify(body) }),
+  changePaperAccount: (id: number, body: { name?: string; risk_pct?: number; archived?: boolean; resume?: boolean }) =>
+    request<PaperAccount>(`/api/paper/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  placePaperTrade: (body: PaperOrder) =>
+    request<{ trade: PaperTrade; note: string }>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
+  changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string }) =>
+    request<{ trade: PaperTrade }>(`/api/paper/trades/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  closePaperTrade: (id: number) => request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/close`, { method: "POST" }),
+  paperEvents: (id: number) => request<{ events: PaperEvent[] }>(`/api/paper/trades/${id}/events`),
   quote: (symbol: string) => request<Quote>(`/api/tools/quote?${new URLSearchParams({ symbol })}`),
   positionSize: (body: { symbol: string; balance: number; risk_pct: number; entry: number; stop: number; mode: string }) =>
     request<PositionSize>("/api/tools/position-size", { method: "POST", body: JSON.stringify(body) }),

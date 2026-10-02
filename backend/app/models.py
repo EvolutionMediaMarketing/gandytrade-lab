@@ -126,3 +126,85 @@ class FetchState(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # When the long history (up to 5,000 bars) was last downloaded for backtests.
     deep_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PaperAccount(Base):
+    """A pretend-money account. Each is either real shares (no leverage) or CFD/spread bet."""
+
+    __tablename__ = "paper_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    mode: Mapped[str] = mapped_column(String(8))  # cash | cfd
+    starting_balance: Mapped[float] = mapped_column(Float)
+    cash: Mapped[float] = mapped_column(Float)  # realised balance in GBP (excludes open trades)
+    deposits: Mapped[float] = mapped_column(Float, default=0.0)  # top-ups added after the start
+    risk_pct: Mapped[float] = mapped_column(Float, default=1.0)
+    daily_loss_pct: Mapped[float] = mapped_column(Float, default=3.0)
+    max_drawdown_pct: Mapped[float] = mapped_column(Float, default=20.0)
+    peak_equity: Mapped[float] = mapped_column(Float)
+    day: Mapped[str] = mapped_column(String(10), default="")  # UK date the day-start figures belong to
+    day_start_equity: Mapped[float] = mapped_column(Float, default=0.0)
+    halted: Mapped[bool] = mapped_column(default=False)
+    halt_reason: Mapped[str] = mapped_column(String(255), default="")
+    archived: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PaperTrade(Base):
+    """One paper trade from entry to exit, with its journal entry and rule score."""
+
+    __tablename__ = "paper_trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32))
+    timeframe: Mapped[str] = mapped_column(String(8), default="")
+    side: Mapped[int] = mapped_column(Integer)  # +1 buy, -1 short
+    status: Mapped[str] = mapped_column(String(10), index=True)  # open | closed
+    units: Mapped[float] = mapped_column(Float)
+    entry_price: Mapped[float] = mapped_column(Float)  # fill, including spread and slippage
+    entry_mid: Mapped[float] = mapped_column(Float)  # the market price recorded at that moment
+    entry_quote_ts: Mapped[int] = mapped_column(BigInteger)  # time of that recorded price
+    entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    entry_rate: Mapped[float] = mapped_column(Float, default=1.0)  # price-currency units per £1 at entry
+    entry_fees: Mapped[float] = mapped_column(Float, default=0.0)
+    stop: Mapped[float] = mapped_column(Float)
+    initial_stop: Mapped[float] = mapped_column(Float)
+    target: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_gbp: Mapped[float] = mapped_column(Float)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_mid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_quote_ts: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    exit_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_reason: Mapped[str] = mapped_column(String(80), default="")
+    pnl_gbp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    costs_gbp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_checked_ts: Mapped[int] = mapped_column(BigInteger, default=0)  # newest candle checked for stop/target
+    source: Mapped[str] = mapped_column(String(16), default="manual")  # manual | strategy
+    strategy: Mapped[str] = mapped_column(String(40), default="")
+    # Journal and pre-trade checklist
+    trend: Mapped[str] = mapped_column(String(10), default="")  # up | down | sideways
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    mood: Mapped[str] = mapped_column(String(20), default="")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    lesson: Mapped[str] = mapped_column(String(500), default="")
+    rule_flags: Mapped[list] = mapped_column(JSON, default=list)  # rules broken, in plain words
+    rule_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class PaperEvent(Base):
+    """Every fill and change, with the market price recorded at that moment (the Phase 3 gate checks these)."""
+
+    __tablename__ = "paper_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trade_id: Mapped[int] = mapped_column(ForeignKey("paper_trades.id", ondelete="CASCADE"), index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    kind: Mapped[str] = mapped_column(String(20))  # opened | stop | target | closed | stop_moved | target_moved
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)  # fill price, if any
+    mid: Mapped[float | None] = mapped_column(Float, nullable=True)  # market price used
+    quote_ts: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # time of that market price
+    quote_source: Mapped[str] = mapped_column(String(16), default="")
+    detail: Mapped[str] = mapped_column(String(255), default="")
