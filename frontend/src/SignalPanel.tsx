@@ -140,8 +140,10 @@ function Card({ card, precision, expanded, onToggle, onBacktest }: {
             <p className="note">
               These rules have been in a {card.openTrade.side === "long" ? "buy" : "short"} since {when(card.openTrade.since)} at {fmt(card.openTrade.entry, precision)},
               stop-loss {fmt(card.openTrade.stop, precision)}. Exit rule: {card.openTrade.exitRule}.
+              {card.openTrade.exitPending && " The exit rule was met on the latest candle, so under these rules it closes at the next open."}
             </p>
           )}
+          {card.note && <p className="warn stop">{card.note}</p>}
           {card.sides.map((side) => <SideView key={side.side} side={side} precision={precision} showSide={card.sides.length > 1} />)}
           <p className="evidence">
             <b>On this market and timeframe:</b> {h.trades} trades over {h.years} years, {h.returnPct > 0 ? "+" : ""}{h.returnPct.toFixed(1)}% after costs

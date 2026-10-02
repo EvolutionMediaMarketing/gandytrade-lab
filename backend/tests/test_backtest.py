@@ -242,3 +242,48 @@ def test_position_size_tool(signed_in):
     assert short.status_code == 400  # can't short real shares
     capped = signed_in.post("/api/tools/position-size", json={"symbol": "TSCO.LON", "balance": 200, "entry": 380, "stop": 379.9}).json()
     assert capped["capped"] is True and capped["valueGbp"] <= 200.01
+
+
+# --- Regressions found in the independent review ----------------------------------------------
+
+def test_drawdown_is_the_largest_percentage_fall():
+    from app.backtest.report import max_drawdown
+
+    assert max_drawdown([(0, 100), (1, 50), (2, 1000), (3, 800)]) == (50.0, 200.0)
+
+
+def test_reversal_on_the_same_candle_as_an_exit():
+    """A long exit and a short entry on the same close: exit then go short at the next open."""
+    def compute(df, _p):
+        n = len(df)
+        flags = lambda idx: pd.Series([i in idx for i in range(n)])
+        long = Side({"go": flags({2})}, flags({4}), pd.Series([90.0] * n), exit_label="Exit rule")
+        short = Side({"go": flags({4})}, flags({6}), pd.Series([110.0] * n), exit_label="Exit rule")
+        return Rules(long, short)
+
+    strat = Strategy("rev", "Reversal", "", [], "", "", "", [], compute)
+    bars = bars_from([(100, 101, 99, 100)] * 9)
+    r = engine.run(bars, strat, {}, settings(), GBP)
+    assert [(t.side, t.entry_i, t.exit_i) for t in r.trades] == [(1, 3, 5), (-1, 5, 7)]
+
+
+def test_no_new_trade_after_the_drawdown_halt():
+    rows = FLAT + [(100, 101, 94, 96), (100, 101, 99, 100), (100, 101, 99, 100), (100, 101, 99, 100)]
+    entries = {2: 95.0, 3: 95.0, 4: 95.0, 5: 95.0}
+    r = engine.run(bars_from(rows), scripted(entries), {}, settings(risk=RiskSettings(2.0, 50.0, 2.0)), GBP)
+    assert r.halted and len(r.trades) == 1  # the 2% loss trips the 2% limit; nothing opens afterwards
+
+
+def test_cash_buys_never_cost_more_than_the_balance():
+    c = Costs(0, 0, fx_fee_pct=0.15, stamp_duty_pct=0.5)
+    bars = bars_from(FLAT + [(100, 101, 99.95, 100)] * 2)
+    s = settings(mode="cash", leverage=1, direction="long", costs=c)
+    t = engine.run(bars, scripted({2: 99.99}), {}, s, GBP).trades[0]
+    assert t.units * 100 + t.entry_fees_gbp <= 1000 + 1e-9
+
+
+def test_no_financing_in_cash_mode_even_if_set():
+    c = Costs(0, 0, financing_pct_year=365.0)
+    bars = bars_from(FLAT + [(100, 101, 99, 100)] * 4)
+    t = engine.run(bars, scripted({2: 90.0}, {5}), {}, settings(costs=c, mode="cash", leverage=1, direction="long"), GBP).trades[0]
+    assert t.pnl_gbp == pytest.approx(0.0)

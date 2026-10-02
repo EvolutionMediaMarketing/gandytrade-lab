@@ -129,13 +129,17 @@ def evaluate(db: Session, code: str, timeframe: str, balance: float = 200.0, ris
                 "beatsBuyHold": bool(m["net"] > bh["net"]),
             },
         }
-        if open_trade is not None and best["status"] == "none":
+        if open_trade is not None:
+            # The rules already hold a position, so a new setup on the same side wouldn't be taken.
             card["status"] = "in_trade"
             card["openTrade"] = {
                 "side": "long" if open_trade.side > 0 else "short", "since": open_trade.entry_ts,
                 "entry": open_trade.entry_price, "stop": open_trade.stop,
                 "exitRule": (rules.long if open_trade.side > 0 else rules.short).exit_label,
+                "exitPending": bool(result.pending_exit),
             }
+        if result.halted:
+            card["note"] = result.halted
         cards.append(card)
 
     cards.sort(key=lambda c: (STATUS_ORDER[c["status"]], -(c["best"]["met"] / max(c["best"]["total"], 1))))

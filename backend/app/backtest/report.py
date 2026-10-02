@@ -24,9 +24,9 @@ def max_drawdown(equity: list[tuple[int, float]]) -> tuple[float, float]:
     values = np.array([v for _, v in equity], dtype=float)
     peaks = np.maximum.accumulate(values)
     drops = peaks - values
-    i = int(np.argmax(drops))
-    pct = float(drops[i] / peaks[i] * 100) if peaks[i] > 0 else 0.0
-    return pct, float(drops[i])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pct = np.where(peaks > 0, drops / peaks * 100, 0.0)
+    return float(pct.max()), float(drops.max())
 
 
 def metrics(result: Result, start: float) -> dict:

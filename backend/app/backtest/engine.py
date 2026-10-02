@@ -77,6 +77,8 @@ class Result:
     halted: str = ""
     skipped: dict[str, int] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    pending_exit: str = ""  # an exit rule met on the last candle (it would fill at the next open)
+    pending_entry: int = 0  # +1 / -1 if an entry was decided on the last candle
 
 
 def _day(ts: int) -> str:
@@ -108,7 +110,7 @@ class _Book:
         return fees
 
     def financing(self, trade: Trade, ts: int) -> float:
-        if not self.c.financing_pct_year:
+        if not self.c.financing_pct_year or self.mode != "cfd":
             return 0.0
         value = self.value_gbp(trade.units, trade.entry_mid, trade.entry_ts)
         return value * self.c.financing_pct_year / 100 / 365 * _nights(trade.entry_ts, ts)
@@ -177,6 +179,8 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         if pending_exit and pos is not None:
             close(i, o[i], pending_exit)
         pending_exit = ""
+        if pending_entry is not None and pos is None and limits.halted:
+            pending_entry = None
         if pending_entry is not None and pos is None:
             side, stop = pending_entry
             buying = side > 0
@@ -184,7 +188,11 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
             if (o[i] - stop) * side <= 0:
                 skipped["Price opened beyond the stop-loss"] = skipped.get("Price opened beyond the stop-loss", 0) + 1
             else:
-                cap = min(settings.leverage, 1.0) if settings.mode == "cash" else settings.leverage
+                if settings.mode == "cash":
+                    fee_rate = (settings.costs.fx_fee_pct + (settings.costs.stamp_duty_pct if buying else 0)) / 100
+                    cap = min(settings.leverage, 1.0) / (1 + fee_rate)
+                else:
+                    cap = settings.leverage
                 d = size_trade(equity_gbp=cash, entry=price, stop=stop, side=side,
                                per_gbp=conv.rate(ts[i]), cap=cap, settings=risk)
                 if d.ok:
@@ -195,7 +203,8 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
                                 risk_gbp=abs(price - stop) * d.units / conv.rate(ts[i]),
                                 note="Leverage-capped" if d.capped else "")
                     if d.capped:
-                        skipped["Smaller than 1% risk (leverage cap)"] = skipped.get("Smaller than 1% risk (leverage cap)", 0) + 1
+                        label = f"Smaller than {risk.risk_pct:g}% risk (leverage cap)"
+                        skipped[label] = skipped.get(label, 0) + 1
                 else:
                     skipped[d.reason] = skipped.get(d.reason, 0) + 1
         pending_entry = None
@@ -212,13 +221,15 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         # 3. At the close
         eq = mark(i)
         equity.append((int(ts[i]), eq))
-        if i == len(df) - 1:
-            break
+        limits.new_candle(_day(int(ts[i])), eq)  # a loss on this candle counts before deciding anything new
         if pos is not None:
-            if exits[pos.side][i]:
-                pending_exit = dict(sides)[pos.side].exit_label or "Exit rule"
-            continue
-        wanted = [s for s, _ in sides if entries[s][i]]
+            if not exits[pos.side][i]:
+                continue
+            pending_exit = dict(sides)[pos.side].exit_label or "Exit rule"
+            # The same close may signal the opposite side (a reversal): it fills after the exit.
+            wanted = [s for s, _ in sides if entries[s][i] and s != pos.side]
+        else:
+            wanted = [s for s, _ in sides if entries[s][i]]
         if len(wanted) != 1:
             continue
         block = limits.entry_block()
@@ -227,12 +238,14 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
             continue
         pending_entry = (wanted[0], float(stops[wanted[0]][i]))
 
+    final_exit, final_entry = pending_exit, (pending_entry[0] if pending_entry else 0)
     if pos is not None:
         last = len(df) - 1
         close(last, c[last], "Still open at the end of the test")
         equity[-1] = (int(ts[last]), cash)
 
-    return Result(trades, equity, limits.halt_reason if limits.halted else "", skipped, list(rules.notes))
+    return Result(trades, equity, limits.halt_reason if limits.halted else "", skipped, list(rules.notes),
+                  pending_exit=final_exit, pending_entry=final_entry)
 
 
 def buy_and_hold(bars: list[Bar], settings: Settings, conv: Converter) -> Result:

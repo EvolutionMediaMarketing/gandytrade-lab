@@ -49,7 +49,8 @@ class Converter:
     def rate(self, ts: int | float) -> float:
         """Units of `currency` per £1 at time ts."""
         if self.times.size:
-            i = int(np.searchsorted(self.times, ts, side="right")) - 1
+            # The previous day's closing rate: today's close isn't known until the day ends.
+            i = int(np.searchsorted(self.times, ts, side="right")) - 2
             return float(self.per_gbp[max(i, 0)])
         return self.fixed
 

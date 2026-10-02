@@ -280,7 +280,8 @@ export interface SignalCard {
   best: SignalSide;
   sides: SignalSide[];
   history: { trades: number; returnPct: number; annualPct: number | null; maxDrawdownPct: number; winRate: number | null; years: number; beatsBuyHold: boolean };
-  openTrade?: { side: "long" | "short"; since: number; entry: number; stop: number; exitRule: string };
+  openTrade?: { side: "long" | "short"; since: number; entry: number; stop: number; exitRule: string; exitPending: boolean };
+  note?: string;
 }
 
 export interface SignalsResponse {
