@@ -24,7 +24,7 @@ interface Props {
   onPlaced: () => void;
   plan: TradePlan | null;
   onPlanChange: (plan: TradePlan | null) => void;
-  onStartFresh: () => void;
+  onStartFresh: (side: "long" | "short") => void;
   onAuthError: (err: unknown) => void;
 }
 
@@ -59,7 +59,7 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
 
   // Size the trade with the risk guard; a short pause so dragging doesn't send a request per pixel.
   useEffect(() => {
-    if (!plan || plan.entry === plan.stop) {
+    if (!plan || plan.entry === plan.stop || plan.stop <= 0 || Math.abs(plan.entry - plan.stop) > plan.entry * 0.5) {
       setOut(null);
       return;
     }
@@ -88,17 +88,16 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
   };
 
   const risk = Math.abs(plan.entry - plan.stop);
+  const planProblem =
+    plan.stop <= 0 ? "The stop-loss must be above zero."
+    : risk > plan.entry * 0.5 ? "The stop-loss is more than half the price away from the entry. Drag it closer, or press Buy or Sell to start again."
+    : plan.target !== null && plan.target <= 0 ? "The target must be above zero."
+    : "";
   const targetOk = plan.target !== null && (plan.target - plan.entry) * (side === "long" ? 1 : -1) > 0;
   const rMultiple = targetOk && risk > 0 ? Math.abs(plan.target! - plan.entry) / risk : null;
   const gainGbp = out && targetOk ? out.units * Math.abs(plan.target! - plan.entry) / out.perGbp : null;
   const breakEven = rMultiple ? 100 / (1 + rMultiple) : null;
   const cashShort = mode === "cash" && side === "short";
-
-  function flip() {
-    const d = plan!.entry - plan!.stop;
-    const t = plan!.target === null ? null : plan!.entry - (plan!.target - plan!.entry);
-    onPlanChange({ entry: plan!.entry, stop: plan!.entry + d, target: t });
-  }
 
   return (
     <div className="planner">
@@ -113,6 +112,22 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
         <button type="button" className={mode === "cfd" ? "on" : ""} onClick={() => setSettings((s) => ({ ...s, mode: "cfd" }))}>CFD / spread bet</button>
       </div>
 
+      <div className="side-buttons" role="radiogroup" aria-label="Buy or sell">
+        <button type="button" className={`buy ${side === "long" ? "on" : ""}`} aria-pressed={side === "long"} onClick={() => onStartFresh("long")}
+          title="Bet on the price rising. Sets the stop-loss below the price, sized by your safeguards.">
+          Buy
+        </button>
+        <button type="button" className={`sell ${side === "short" ? "on" : ""}`} aria-pressed={side === "short"} disabled={mode === "cash"}
+          onClick={() => onStartFresh("short")}
+          title={mode === "cash" ? "With real shares you can only buy." : "Bet on the price falling (short). Sets the stop-loss above the price."}>
+          Sell (short)
+        </button>
+      </div>
+      <p className="muted small-text">
+        Pressing one sets the entry at the latest price, the stop-loss 2 × the typical daily move on the safe side and a 2R target,
+        sized so a stop-out loses {settings.risk}% of the account. Drag the lines to adjust.
+      </p>
+
       <div className="param-grid">
         <label><span>Entry</span><PriceInput value={plan.entry} precision={p} onCommit={(v) => set("entry", v)} /></label>
         <label><span>Stop-loss</span><PriceInput value={plan.stop} precision={p} onCommit={(v) => set("stop", v)} /></label>
@@ -124,13 +139,16 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
       </div>
 
       <div className="planner-actions">
-        <button type="button" className="ghost small" onClick={onStartFresh}>Start from latest price</button>
-        {mode === "cfd" && <button type="button" className="ghost small" onClick={flip}>{side === "long" ? "Make it a short" : "Make it a buy"}</button>}
+        <button type="button" className="ghost small" onClick={() => onStartFresh(side)}>Start again from latest price</button>
         {plan.target === null
-          ? <button type="button" className="ghost small" onClick={() => onPlanChange({ ...plan, target: plan.entry + 2 * (plan.entry - plan.stop) })}>Add a 2R target</button>
+          ? <button type="button" className="ghost small" onClick={() => {
+              const t = plan.entry + 2 * (plan.entry - plan.stop);
+              onPlanChange({ ...plan, target: t > 0 ? t : null });
+            }}>Add a 2R target</button>
           : <button type="button" className="ghost small" onClick={() => onPlanChange({ ...plan, target: null })}>Remove target</button>}
       </div>
 
+      {planProblem && <p className="warn stop">{planProblem}</p>}
       {cashShort && <p className="warn caution">With real shares you can only buy, so the stop-loss must be below the entry. Switch to CFD / spread bet to plan a short.</p>}
       {error && !cashShort && <p className="warn stop">{error}</p>}
 
@@ -159,7 +177,7 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
         </div>
       )}
 
-      {!cashShort && plan.entry !== plan.stop && (
+      {!cashShort && !planProblem && plan.entry !== plan.stop && (
         <OddsBox symbol={symbol} timeframe={timeframe} plan={plan} mode={mode} precision={p}
           onUseTarget={(price) => onPlanChange({ ...plan, target: Number(price.toFixed(p)) })} onAuthError={onAuthError} />
       )}

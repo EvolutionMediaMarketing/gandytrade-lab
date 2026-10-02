@@ -199,18 +199,20 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
   const update = (patch: Partial<Prefs>) => setPrefs((p) => ({ ...p, ...patch }));
 
-  // A fresh plan: entry at the latest price, stop 2 × the daily ATR away, target at twice the risk (2R).
+  // A fresh plan: entry at the latest price, stop 2 × the daily ATR away on the right side, target at twice the risk (2R).
   const lastClose = data && data.symbol.code === prefs.symbol && data.bars.length ? data.bars[data.bars.length - 1].close : null;
   const lastCloseRef = useRef<number | null>(lastClose);
   lastCloseRef.current = lastClose;
-  const startPlan = useCallback(() => {
+  const startPlan = useCallback((side: "long" | "short" = "long") => {
     api
       .quote(prefs.symbol)
       .then((q) => {
         const entry = lastCloseRef.current ?? q.price; // the price you can see on the chart
-        const distance = q.dailyAtr ? 2 * q.dailyAtr : entry * 0.02;
+        const distance = Math.min(q.dailyAtr ? 2 * q.dailyAtr : entry * 0.02, entry * 0.3);
+        const sign = side === "long" ? 1 : -1;
         const round = (v: number) => Number(v.toFixed(q.symbol.precision));
-        setPlan({ entry: round(entry), stop: round(entry - distance), target: round(entry + 2 * distance) });
+        const target = entry + sign * 2 * distance;
+        setPlan({ entry: round(entry), stop: round(entry - sign * distance), target: target > 0 ? round(target) : null });
       })
       .catch(handleAuth);
   }, [prefs.symbol, handleAuth]);
@@ -221,7 +223,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   }, [prefs.symbol]);
 
   useEffect(() => {
-    if (panel === "plan" && plan === null) startPlan();
+    if (panel === "plan" && plan === null) startPlan("long");
   }, [panel, plan, startPlan]);
 
   function toggleIndicator(def: IndicatorDef) {

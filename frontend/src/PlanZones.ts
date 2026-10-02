@@ -1,4 +1,5 @@
 import type {
+  AutoscaleInfo,
   IChartApi,
   IPrimitivePaneRenderer,
   IPrimitivePaneView,
@@ -81,6 +82,15 @@ export class PlanZones implements ISeriesPrimitive<Time> {
     const stop = series.priceToCoordinate(plan.stop);
     const target = plan.target === null ? null : series.priceToCoordinate(plan.target);
     this.box = entry === null || stop === null ? null : { x0: x, entry, stop, target: target ?? null };
+  }
+
+  /** Keep the entry, stop-loss and target inside the visible price range. */
+  autoscaleInfo(): AutoscaleInfo | null {
+    const p = this.plan;
+    if (!p) return null;
+    const prices = [p.entry, p.stop, ...(p.target !== null ? [p.target] : [])].filter((v) => Number.isFinite(v) && v > 0);
+    if (!prices.length) return null;
+    return { priceRange: { minValue: Math.min(...prices), maxValue: Math.max(...prices) } };
   }
 
   paneViews(): readonly IPrimitivePaneView[] {

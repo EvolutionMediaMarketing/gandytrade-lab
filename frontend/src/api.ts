@@ -23,7 +23,13 @@ async function request<T>(path: string, init: RequestInit = {}, background = fal
     /* empty body */
   }
   if (!res.ok) {
-    const detail = typeof data?.detail === "string" ? data.detail : `Request failed (${res.status}).`;
+    let detail = typeof data?.detail === "string" ? data.detail : `Request failed (${res.status}).`;
+    if (Array.isArray(data?.detail) && data.detail.length) {
+      // FastAPI validation errors: name the field in plain words.
+      const first = data.detail[0];
+      const field = String(first?.loc?.[first.loc.length - 1] ?? "value").replace(/_/g, " ");
+      detail = `Please check the ${field}: ${String(first?.msg ?? "it isn't valid").replace(/^Input should be /, "it should be ")}.`;
+    }
     throw new ApiError(res.status, detail);
   }
   return data as T;

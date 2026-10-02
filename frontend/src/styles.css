@@ -266,6 +266,14 @@ table.trades tr.clickable:hover td { background: var(--surface-2); }
 .k.stop { color: var(--down); }
 .k.target { color: var(--accent); }
 
+/* Buy / sell */
+.side-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.side-buttons button { padding: 10px; font-weight: 600; font-size: 15px; background: transparent; }
+.side-buttons .buy { color: var(--accent); border-color: rgba(52, 211, 153, 0.5); }
+.side-buttons .sell { color: var(--down); border-color: rgba(248, 113, 113, 0.5); }
+.side-buttons .buy.on { background: var(--accent); color: var(--accent-ink); }
+.side-buttons .sell.on { background: var(--down); color: #2a0606; }
+
 /* Target odds */
 .odds { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
 .odds h3 { margin: 0; font-size: 14px; }

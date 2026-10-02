@@ -358,6 +358,7 @@ export default function ChartView({ data, markers, focusTime, plan, onPlanChange
       if (!key) return;
       dragging = key;
       chart.applyOptions({ handleScroll: false, handleScale: false });
+      chart.priceScale("right").applyOptions({ autoScale: false }); // the scale holds still while you drag
       el.setPointerCapture(e.pointerId);
       e.preventDefault();
       e.stopPropagation();
@@ -368,7 +369,8 @@ export default function ChartView({ data, markers, focusTime, plan, onPlanChange
         el.style.cursor = near(y) ? "ns-resize" : "";
         return;
       }
-      const price = main.coordinateToPrice(y);
+      const paneHeight = chart.panes()[0]?.getHeight() ?? el.clientHeight;
+      const price = main.coordinateToPrice(Math.min(paneHeight - 4, Math.max(4, y))); // can't leave the chart
       const p = planRef.current;
       if (price === null || !p || price <= 0) return;
       const next = { ...p, [dragging]: Number((Math.round(price / step) * step).toFixed(precision)) };
@@ -379,6 +381,7 @@ export default function ChartView({ data, markers, focusTime, plan, onPlanChange
       if (!dragging) return;
       dragging = null;
       chart.applyOptions({ handleScroll: true, handleScale: true });
+      chart.priceScale("right").applyOptions({ autoScale: true });
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
     };
     el.addEventListener("pointerdown", onDown, { capture: true });
