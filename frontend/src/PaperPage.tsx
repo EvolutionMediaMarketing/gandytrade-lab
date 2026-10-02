@@ -3,6 +3,7 @@ import { api } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
 import type { PaperAccount, PaperEvent, PaperTrade } from "./types";
+import { useLivePrices } from "./useLivePrices";
 
 const REFRESH_MS = 30_000;
 const MOOD_LABEL: Record<string, string> = {
@@ -44,6 +45,17 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
     }, REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [loadDetail]);
+
+  // Live prices for open trades on OANDA markets: move "Now" and the profit between the 30-second refreshes.
+  const openSymbols = (detail?.open ?? []).map((t) => t.symbol);
+  const { prices: live } = useLivePrices(openSymbols, openSymbols.length > 0);
+  const withLive = (t: PaperTrade): PaperTrade => {
+    const lp = live[t.symbol];
+    if (!lp || t.price == null || !t.valueGbp || t.unrealised === undefined) return t;
+    const ratePerGbp = (t.units * t.price) / t.valueGbp; // price-currency units per £1
+    const unrealised = t.unrealised + ((lp.mid - t.price) * (t.side === "long" ? 1 : -1) * t.units) / ratePerGbp;
+    return { ...t, price: lp.mid, unrealised };
+  };
 
   function act(p: Promise<unknown>) {
     p.then(() => { loadDetail(); loadAccounts(); }).catch((err) => {
@@ -108,13 +120,13 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
                   <table className="trades">
                     <thead><tr><th>Market</th><th>Side</th><th>Opened</th><th>Entry</th><th>Now</th><th>Stop-loss</th><th>Target</th><th className="num">Profit</th><th></th></tr></thead>
                     <tbody>
-                      {detail.open.map((t) => (
+                      {detail.open.map(withLive).map((t) => (
                         <tr key={t.id}>
                           <td><button type="button" className="link-button" onClick={() => onOpenChart(t.symbol)}>{displayCode(t.symbol)}</button></td>
                           <td>{t.side === "long" ? "Buy" : "Short"}</td>
                           <td>{when(t.entryTime)}</td>
                           <td className="mono">{fmt(t.entryPrice, t.precision)}</td>
-                          <td className="mono">{fmt(t.price, t.precision)}</td>
+                          <td className="mono">{fmt(t.price, t.precision)}{live[t.symbol] && <i className="live-dot" title="Live price" />}</td>
                           <td className="mono">
                             <EditPrice value={t.stop} precision={t.precision ?? 5} label="stop-loss" onSave={(v) => {
                               const wider = t.side === "long" ? v < t.stop : v > t.stop;

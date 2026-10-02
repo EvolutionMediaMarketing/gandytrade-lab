@@ -435,3 +435,10 @@ export interface TargetOdds {
   anyViable: boolean;
   largestViable: OddsRow | null;
 }
+
+export interface LivePrice {
+  bid: number;
+  ask: number;
+  mid: number;
+  time: number;
+}

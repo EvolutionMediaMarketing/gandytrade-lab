@@ -1,6 +1,6 @@
 """The only way the app talks to the internet: an HTTP client limited to an allowlist.
 
-Market data comes from three read-only services. Any request to another host, or
+Market data comes from three read-only services (OANDA's practice prices, Twelve Data and Alpha Vantage). Any request to another host, or
 over plain HTTP, is refused before it leaves the app. Adding a host here is a
 deliberate, reviewed change; the live trading gateway (Phase 6) will have its
 own separate client, in its own container, on its own server.
@@ -8,7 +8,12 @@ own separate client, in its own container, on its own server.
 
 import httpx
 
-ALLOWED_HOSTS = frozenset({"api-fxpractice.oanda.com", "api.twelvedata.com", "www.alphavantage.co"})
+ALLOWED_HOSTS = frozenset({
+    "api-fxpractice.oanda.com",  # OANDA practice: price history and the market list
+    "stream-fxpractice.oanda.com",  # OANDA practice: live price stream (receive only)
+    "api.twelvedata.com",
+    "www.alphavantage.co",
+})
 
 
 class BlockedHost(httpx.HTTPError):

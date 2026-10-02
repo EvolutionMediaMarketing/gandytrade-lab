@@ -101,6 +101,8 @@ const PLAN_STYLE: Record<PlanKey, { color: string; title: string }> = {
 
 interface ChartViewProps {
   data: ChartData;
+  /** The latest live price: moves the forming candle between refreshes. */
+  live?: { mid: number; time: number } | null;
   markers?: ChartMarker[];
   focusTime?: number;
   /** A trade plan drawn as draggable lines. */
@@ -108,11 +110,12 @@ interface ChartViewProps {
   onPlanChange?: (plan: TradePlan) => void;
 }
 
-export default function ChartView({ data, markers, focusTime, plan, onPlanChange }: ChartViewProps) {
+export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange }: ChartViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const mainRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const zonesRef = useRef<PlanZones | null>(null);
+  const lastBarRef = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null);
   const linesRef = useRef<Partial<Record<PlanKey, IPriceLine>>>({});
   const planRef = useRef<TradePlan | null | undefined>(plan);
   const onPlanChangeRef = useRef(onPlanChange);
@@ -148,6 +151,19 @@ export default function ChartView({ data, markers, focusTime, plan, onPlanChange
   useEffect(() => {
     syncPlan();
   }, [plan, syncPlan]);
+
+  // Live prices update the last candle in place (high, low and close), never older ones.
+  useEffect(() => {
+    const main = mainRef.current;
+    const bar = lastBarRef.current;
+    if (!live || !main || !bar || live.time < bar.time) return;
+    bar.close = live.mid;
+    bar.high = Math.max(bar.high, live.mid);
+    bar.low = Math.min(bar.low, live.mid);
+    if (data.style === "line" || data.style === "area") main.update({ time: bar.time as Time, value: bar.close });
+    else main.update({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+    setLegend((l) => (l && l.time === bar.time ? { ...l, high: bar.high, low: bar.low, close: bar.close } : l));
+  }, [live, data.style]);
   // Remembers where you'd scrolled and zoomed, so an automatic refresh doesn't reset the view.
   const viewRef = useRef<{ key: string; fromEnd: number; toEnd: number } | null>(null);
   const [legend, setLegend] = useState<BarData | null>(null);
@@ -201,6 +217,10 @@ export default function ChartView({ data, markers, focusTime, plan, onPlanChange
       });
       main.setData([...ohlc, ...future]);
     }
+
+    // The forming candle, which live prices move until the next refresh.
+    const lb = data.bars[data.bars.length - 1];
+    lastBarRef.current = lb && data.style !== "heikin_ashi" ? { time: lb.time, open: lb.open, high: lb.high, low: lb.low, close: lb.close } : null;
 
     // Trade plan: shaded zones plus draggable lines (drawn by syncPlan).
     const zones = new PlanZones();

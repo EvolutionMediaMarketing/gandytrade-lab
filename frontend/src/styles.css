@@ -266,6 +266,15 @@ table.trades tr.clickable:hover td { background: var(--surface-2); }
 .k.stop { color: var(--down); }
 .k.target { color: var(--accent); }
 
+/* Live prices */
+.live-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--mono); color: var(--accent);
+  padding: 4px 8px; border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 999px; align-self: center; }
+.live-badge i, .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block;
+  animation: live-pulse 1.6s ease-in-out infinite; }
+.live-dot { margin-left: 6px; vertical-align: middle; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .live-badge i, .live-dot { animation: none; } }
+
 /* Buy / sell */
 .side-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .side-buttons button { padding: 10px; font-weight: 600; font-size: 15px; background: transparent; }

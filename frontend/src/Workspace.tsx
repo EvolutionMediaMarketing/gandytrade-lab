@@ -9,6 +9,7 @@ import type { TradePlan } from "./PlanZones";
 import SettingsPage from "./SettingsPage";
 import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
+import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
 
@@ -199,6 +200,11 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
   const update = (patch: Partial<Prefs>) => setPrefs((p) => ({ ...p, ...patch }));
 
+  // Live prices for OANDA markets (currencies, metals, commodities, indices) while the chart is on screen.
+  const streamable = page === "charts" && !!data && data.source === "oanda" && data.symbol.code === prefs.symbol;
+  const { prices: livePrices, live } = useLivePrices(streamable ? [prefs.symbol] : [], streamable);
+  const livePrice = streamable ? livePrices[prefs.symbol] ?? null : null;
+
   // A fresh plan: entry at the latest price, stop 2 × the daily ATR away on the right side, target at twice the risk (2R).
   const lastClose = data && data.symbol.code === prefs.symbol && data.bars.length ? data.bars[data.bars.length - 1].close : null;
   const lastCloseRef = useRef<number | null>(lastClose);
@@ -343,6 +349,11 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           Auto-refresh
         </label>
         {sourceLabel && <span className={data?.sample ? "source sample" : "source"}>{sourceLabel}</span>}
+        {streamable && live && livePrice && (
+          <span className="live-badge" title="Prices stream live from OANDA's practice feed">
+            <i aria-hidden="true" /> Live {livePrice.mid.toFixed(data!.symbol.precision)}
+          </span>
+        )}
         {updatedAt && (
           <span className="updated muted">
             Updated {updatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -361,7 +372,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? (
-            <ChartView data={data} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan} />
+            <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan} />
           ) : !error && <div className="splash">Loading chart…</div>}
         </section>
 

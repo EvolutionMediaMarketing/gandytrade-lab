@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -84,6 +84,10 @@ export const api = {
   paperEvents: (id: number) => request<{ events: PaperEvent[] }>(`/api/paper/trades/${id}/events`),
   targetOdds: (body: { symbol: string; timeframe: string; entry: number; stop: number; target: number | null; mode: string }) =>
     request<TargetOdds>("/api/tools/target-odds", { method: "POST", body: JSON.stringify(body) }),
+  live: (symbols: string[]) =>
+    request<{ live: boolean; status: string; prices: Record<string, LivePrice> }>(
+      `/api/live?${new URLSearchParams({ symbols: symbols.join(",") })}`, {}, true,
+    ),
   quote: (symbol: string) => request<Quote>(`/api/tools/quote?${new URLSearchParams({ symbol })}`),
   positionSize: (body: { symbol: string; balance: number; risk_pct: number; entry: number; stop: number; mode: string }) =>
     request<PositionSize>("/api/tools/position-size", { method: "POST", body: JSON.stringify(body) }),
