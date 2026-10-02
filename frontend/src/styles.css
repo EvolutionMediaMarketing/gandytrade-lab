@@ -109,7 +109,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 16px; font-size: 12px; color: var(--muted); }
 
 /* Market picker */
-.market-picker { position: relative; display: grid; gap: 4px; }
+.market-picker { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 4px 4px; align-items: stretch; }
+.market-picker .field-label { grid-column: 1 / -1; }
+.star {
+  background: transparent; border: 1px solid transparent; color: var(--muted); font-size: 16px; line-height: 1;
+  padding: 4px 6px; border-radius: 6px;
+}
+.star:hover { color: var(--amber); border-color: var(--line); }
+.star.on { color: var(--amber); }
+.trigger-star { border-color: var(--line); background: var(--surface-2); padding: 0 10px; font-size: 17px; }
 .field-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .market-trigger {
   display: flex; align-items: baseline; gap: 8px; min-width: 220px; max-width: 340px; text-align: left;
@@ -134,7 +142,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .class-chips .count { opacity: 0.7; font-family: var(--mono); font-size: 11px; margin-left: 2px; }
 .market-list { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 420px); overflow-y: auto; }
 .market-list li[role="option"] {
-  display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 10px;
+  display: grid; grid-template-columns: 96px 1fr auto auto; align-items: center; gap: 10px;
   padding: 7px 8px; border-radius: 6px; cursor: pointer;
 }
 .market-list li.active { background: var(--surface-2); }
@@ -158,6 +166,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   .body { padding: 8px 12px 0; }
   .segmented { overflow-x: auto; max-width: 100%; }
   .market-pop { position: fixed; left: 12px; right: 12px; top: 64px; width: auto; }
-  .market-list li[role="option"] { grid-template-columns: 80px 1fr; }
+  .market-list li[role="option"] { grid-template-columns: 80px 1fr auto; }
   .market-list .tag { display: none; }
 }

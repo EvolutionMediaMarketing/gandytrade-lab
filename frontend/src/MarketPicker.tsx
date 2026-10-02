@@ -8,10 +8,12 @@ export const CLASS_LABELS: Record<string, string> = {
   commodity: "Commodities",
   index: "Indices",
   bond: "Bonds",
+  ukstock: "UK shares",
   stock: "US stocks",
   etf: "US ETFs",
 };
-const CLASS_ORDER = ["forex", "metal", "commodity", "index", "bond", "stock", "etf"];
+const CLASS_ORDER = ["forex", "metal", "commodity", "index", "bond", "ukstock", "stock", "etf"];
+const FAVS = "favourites";
 const RECENT_STORAGE_SLOT = "gt.recentMarkets.v1";
 const MAX_RECENT = 8;
 
@@ -39,13 +41,15 @@ interface Props {
   current?: SymbolInfo;
   popular: SymbolInfo[];
   counts: Record<string, number>;
+  favourites: SymbolInfo[];
+  onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   onChange: (s: SymbolInfo) => void;
   onAuthError: (err: unknown) => void;
 }
 
 type Row = { kind: "heading"; label: string } | { kind: "item"; symbol: SymbolInfo };
 
-export default function MarketPicker({ value, current, popular, counts, onChange, onAuthError }: Props) {
+export default function MarketPicker({ value, current, popular, counts, favourites, onToggleFavourite, onChange, onAuthError }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cls, setCls] = useState("");
@@ -58,11 +62,14 @@ export default function MarketPicker({ value, current, popular, counts, onChange
   const list = useRef<HTMLUListElement>(null);
 
   const total = useMemo(() => Object.values(counts).reduce((a, b) => a + b, 0), [counts]);
+  const favSet = useMemo(() => new Set(favourites.map((f) => f.code)), [favourites]);
+  const showingFavs = cls === FAVS;
   const browsing = !query.trim() && !cls;
+  const serverSearch = open && !browsing && !showingFavs;
 
   // Search on the server as you type (short pause first so we don't send a request per key).
   useEffect(() => {
-    if (!open || browsing) {
+    if (!serverSearch) {
       setResults(null);
       return;
     }
@@ -84,7 +91,7 @@ export default function MarketPicker({ value, current, popular, counts, onChange
       ctrl.abort();
       window.clearTimeout(timer);
     };
-  }, [open, query, cls, browsing, onAuthError]);
+  }, [serverSearch, query, cls, onAuthError]);
 
   // Close when clicking elsewhere.
   useEffect(() => {
@@ -105,8 +112,18 @@ export default function MarketPicker({ value, current, popular, counts, onChange
   }, [open]);
 
   const rows: Row[] = useMemo(() => {
+    if (showingFavs) {
+      const q = query.trim().toLowerCase().replace("/", "_");
+      return favourites
+        .filter((s) => !q || `${s.code} ${s.name}`.toLowerCase().includes(q))
+        .map((symbol) => ({ kind: "item" as const, symbol }));
+    }
     if (!browsing) return (results ?? []).map((symbol) => ({ kind: "item" as const, symbol }));
     const out: Row[] = [];
+    if (favourites.length) {
+      out.push({ kind: "heading", label: "Favourites" });
+      favourites.forEach((symbol) => out.push({ kind: "item", symbol }));
+    }
     if (recent.length) {
       out.push({ kind: "heading", label: "Recent" });
       recent.forEach((symbol) => out.push({ kind: "item", symbol }));
@@ -118,7 +135,7 @@ export default function MarketPicker({ value, current, popular, counts, onChange
       group.forEach((symbol) => out.push({ kind: "item", symbol }));
     }
     return out;
-  }, [browsing, results, recent, popular]);
+  }, [browsing, showingFavs, query, results, recent, popular, favourites]);
 
   const items = rows.filter((r): r is Extract<Row, { kind: "item" }> => r.kind === "item");
 
@@ -163,6 +180,18 @@ export default function MarketPicker({ value, current, popular, counts, onChange
         {label && <span className="muted">{label}</span>}
         <span className="caret" aria-hidden="true">▾</span>
       </button>
+      {current && current.code === value && (
+        <button
+          type="button"
+          className={favSet.has(value) ? "star trigger-star on" : "star trigger-star"}
+          title={favSet.has(value) ? "Remove from favourites" : "Add to favourites"}
+          aria-label={favSet.has(value) ? `Remove ${current.name} from favourites` : `Add ${current.name} to favourites`}
+          aria-pressed={favSet.has(value)}
+          onClick={() => onToggleFavourite(current, !favSet.has(value))}
+        >
+          {favSet.has(value) ? "★" : "☆"}
+        </button>
+      )}
 
       {open && (
         <div className="market-pop" role="dialog" aria-label="Choose a market" onKeyDown={onKey}>
@@ -180,6 +209,9 @@ export default function MarketPicker({ value, current, popular, counts, onChange
           />
           <div className="class-chips" role="group" aria-label="Filter by type">
             <button type="button" className={!cls ? "on" : ""} onClick={() => setCls("")}>All</button>
+            <button type="button" className={showingFavs ? "on" : ""} onClick={() => setCls(showingFavs ? "" : FAVS)}>
+              ★ Favourites <span className="count">{favourites.length}</span>
+            </button>
             {CLASS_ORDER.filter((c) => counts[c]).map((c) => (
               <button key={c} type="button" className={cls === c ? "on" : ""} onClick={() => setCls(cls === c ? "" : c)}>
                 {CLASS_LABELS[c]} <span className="count">{counts[c].toLocaleString("en-GB")}</span>
@@ -207,13 +239,30 @@ export default function MarketPicker({ value, current, popular, counts, onChange
                   <span className="m-code">{displayCode(s.code)}</span>
                   <span className="m-name">{s.name}</span>
                   <span className="tag">{CLASS_LABELS[s.asset_class] ?? s.asset_class}</span>
+                  <button
+                    type="button"
+                    className={favSet.has(s.code) ? "star on" : "star"}
+                    aria-label={favSet.has(s.code) ? `Remove ${s.name} from favourites` : `Add ${s.name} to favourites`}
+                    aria-pressed={favSet.has(s.code)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFavourite(s, !favSet.has(s.code));
+                    }}
+                  >
+                    {favSet.has(s.code) ? "★" : "☆"}
+                  </button>
                 </li>
               );
             })}
-            {!browsing && !searching && results && results.length === 0 && (
+            {showingFavs && rows.length === 0 && (
+              <li className="list-empty" role="presentation">
+                {favourites.length ? `No favourites match “${query}”.` : "No favourites yet. Tap ☆ next to any market to add it."}
+              </li>
+            )}
+            {serverSearch && !searching && results && results.length === 0 && (
               <li className="list-empty" role="presentation">No markets match “{query}”.</li>
             )}
-            {!browsing && searching && !results && <li className="list-empty" role="presentation">Searching…</li>}
+            {serverSearch && searching && !results && <li className="list-empty" role="presentation">Searching…</li>}
           </ul>
           {results && results.length >= 60 && (
             <p className="list-foot muted">Showing the first 60. Type more to narrow it down.</p>

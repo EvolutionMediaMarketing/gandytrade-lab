@@ -36,6 +36,9 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   catalogue: () => request<Catalogue>("/api/catalogue"),
+  favourites: () => request<{ favourites: SymbolInfo[] }>("/api/favourites"),
+  setFavourite: (code: string, on: boolean) =>
+    request<{ favourites: SymbolInfo[] }>(`/api/favourites/${encodeURIComponent(code)}`, { method: on ? "PUT" : "DELETE" }),
   searchMarkets: (q: string, assetClass: string, signal?: AbortSignal) =>
     request<{ results: SymbolInfo[] }>(
       `/api/markets/search?${new URLSearchParams({ q, class: assetClass, limit: "60" })}`,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
 import MarketPicker from "./MarketPicker";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -61,6 +61,7 @@ function defaults(def: IndicatorDef): Record<string, number> {
 
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [favourites, setFavourites] = useState<SymbolInfo[]>([]);
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +93,23 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
   useEffect(() => {
     api.catalogue().then(setCatalogue).catch(handleAuth);
+    api.favourites().then((r) => setFavourites(r.favourites)).catch(handleAuth);
   }, [handleAuth]);
+
+  // Star or unstar a market. The list updates at once and is then confirmed by the server.
+  const toggleFavourite = useCallback(
+    (symbol: SymbolInfo, on: boolean) => {
+      setFavourites((list) => (on ? [...list.filter((f) => f.code !== symbol.code), symbol] : list.filter((f) => f.code !== symbol.code)));
+      api
+        .setFavourite(symbol.code, on)
+        .then((r) => setFavourites(r.favourites))
+        .catch((err) => {
+          handleAuth(err);
+          api.favourites().then((r) => setFavourites(r.favourites)).catch(() => undefined);
+        });
+    },
+    [handleAuth],
+  );
 
   // `quiet` refreshes keep the current chart on screen and skip overlapping requests.
   const load = useCallback(
@@ -169,7 +186,9 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       ? "OANDA demo feed"
       : data?.source === "twelvedata"
         ? "Twelve Data"
-        : "";
+        : data?.source === "alphavantage"
+          ? "Alpha Vantage (LSE)"
+          : "";
 
   return (
     <div className="workspace">
@@ -190,6 +209,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           current={data?.symbol.code === prefs.symbol ? data.symbol : catalogue?.symbols.find((x) => x.code === prefs.symbol)}
           popular={catalogue?.symbols ?? []}
           counts={catalogue?.marketCounts ?? {}}
+          favourites={favourites}
+          onToggleFavourite={toggleFavourite}
           onChange={(sym) => update({ symbol: sym.code })}
           onAuthError={handleAuth}
         />

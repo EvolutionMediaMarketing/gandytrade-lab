@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import FetchState, PriceBar
-from .providers import oanda, sample, twelvedata
+from .providers import alphavantage, oanda, sample, twelvedata
 from .providers.base import Bar, ProviderError
 from .symbols import Symbol
 from .timeframes import Timeframe, refresh_after_seconds
@@ -25,15 +25,24 @@ class BarsResult:
     warnings: list[str] = field(default_factory=list)
 
 
+KEY_NAMES = {"oanda": "OANDA", "twelvedata": "Twelve Data", "alphavantage": "Alpha Vantage"}
+
+
 def _provider_key(symbol: Symbol) -> str:
     settings = get_settings()
-    return settings.oanda_token if symbol.provider == "oanda" else settings.twelvedata_key
+    return {
+        "oanda": settings.oanda_token,
+        "twelvedata": settings.twelvedata_key,
+        "alphavantage": settings.alphavantage_key,
+    }.get(symbol.provider, "")
 
 
 def _fetch_from_provider(symbol: Symbol, tf: Timeframe, count: int) -> list[Bar]:
     key = _provider_key(symbol)
     if symbol.provider == "oanda":
         return oanda.fetch_candles(key, symbol, tf, count)
+    if symbol.provider == "alphavantage":
+        return alphavantage.fetch_candles(key, symbol, tf, count)
     return twelvedata.fetch_candles(key, symbol, tf, count)
 
 
@@ -93,7 +102,7 @@ def get_bars(db: Session, symbol: Symbol, tf: Timeframe, limit: int = 1000) -> B
             bars=sample.generate(symbol, tf, limit),
             source="sample",
             sample=True,
-            warnings=["Sample data: not real prices. Add your free data key to see real prices."],
+            warnings=[f"Sample data: not real prices. Add your free {KEY_NAMES.get(symbol.provider, 'data')} key to see real prices."],
         )
 
     state = db.scalar(

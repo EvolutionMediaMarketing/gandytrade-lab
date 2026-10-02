@@ -93,6 +93,10 @@ bash deploy/scripts/as-app-user.sh systemctl --user restart gandytrade-app
 
 Use a token from an OANDA **demo (fxTrade Practice)** account only.
 
+For London shares, get a free key at alphavantage.co (Get free API key) and add a line
+`GT_ALPHAVANTAGE_KEY=` with it to the same file, then restart as above. The free plan allows
+25 requests a day, so each UK share refreshes at most twice a day; daily, weekly and monthly charts only.
+
 ## Updating to a new version
 
 ```bash

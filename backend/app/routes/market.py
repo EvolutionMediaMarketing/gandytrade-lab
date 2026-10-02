@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api", tags=["market"])
 STYLES = ["candles", "bars", "line", "area", "heikin_ashi"]
 
 
-ASSET_CLASSES = ["forex", "metal", "commodity", "index", "bond", "stock", "etf"]
+ASSET_CLASSES = ["forex", "metal", "commodity", "index", "bond", "stock", "etf", "ukstock"]
 
 
 @router.get("/catalogue")
@@ -39,6 +39,7 @@ def catalogue(db: Session = Depends(get_session), _: User = Depends(current_user
         "dataSources": {
             "oanda": bool(settings.oanda_token),
             "twelvedata": bool(settings.twelvedata_key),
+            "alphavantage": bool(settings.alphavantage_key),
         },
     }
 
@@ -84,6 +85,8 @@ def chart(body: ChartRequest, db: Session = Depends(get_session), _: User = Depe
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     data = build_chart(result.bars, tf, style, [i.model_dump() for i in body.indicators])
+    if symbol.provider == "alphavantage":
+        result.warnings.append("London share prices are in pence (100p = £1). Daily, weekly and monthly charts only.")
     data.update(
         {
             "symbol": symbol.to_dict(),

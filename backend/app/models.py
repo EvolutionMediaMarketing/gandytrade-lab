@@ -60,12 +60,24 @@ class Instrument(Base):
 
     code: Mapped[str] = mapped_column(String(32), primary_key=True)  # our code, e.g. EUR_USD or AAPL
     name: Mapped[str] = mapped_column(String(160))
-    asset_class: Mapped[str] = mapped_column(String(16), index=True)  # forex|metal|commodity|index|bond|stock|etf
+    asset_class: Mapped[str] = mapped_column(String(16), index=True)  # forex|metal|commodity|index|bond|stock|etf|ukstock
     provider: Mapped[str] = mapped_column(String(16), index=True)  # oanda|twelvedata
     provider_symbol: Mapped[str] = mapped_column(String(32))
     precision: Mapped[int] = mapped_column(Integer, default=2)
     exchange: Mapped[str] = mapped_column(String(32), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Favourite(Base):
+    """A market you've starred. Stored on the server so it follows you between devices."""
+
+    __tablename__ = "favourites"
+    __table_args__ = (UniqueConstraint("user_id", "code", name="uq_favourite"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code: Mapped[str] = mapped_column(String(32))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class PriceBar(Base):

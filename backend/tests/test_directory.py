@@ -131,3 +131,77 @@ def test_catalogue_reports_counts(signed_in):
 
 def test_search_requires_sign_in(client):
     assert client.get("/api/markets/search", params={"q": "a"}).status_code == 401
+
+
+# --- London shares (Alpha Vantage) ---------------------------------------------------------
+
+def test_uk_shares_listed_without_any_requests(signed_in):
+    from app.db import new_session
+
+    db = new_session()
+    assert directory.counts(db)["ukstock"] >= 90  # saved when the app started
+    assert directory.ensure_fixed_lists(db) == 0  # unchanged list isn't rewritten
+    assert directory.ensure_fixed_lists(db, force=True) >= 90
+    db.close()
+    found = signed_in.get("/api/markets/search", params={"q": "tesco"}).json()["results"]
+    assert found[0]["code"] == "TSCO.LON" and found[0]["asset_class"] == "ukstock"
+    assert signed_in.get("/api/markets/search", params={"q": "lloy"}).json()["results"][0]["code"] == "LLOY.LON"
+
+
+def test_uk_share_chart_says_pence(signed_in):
+    r = signed_in.post("/api/chart", json={"symbol": "TSCO.LON", "timeframe": "1d", "limit": 100})
+    assert r.status_code == 200
+    warnings = r.json()["warnings"]
+    assert any("Alpha Vantage" in w for w in warnings) and any("pence" in w for w in warnings)
+
+
+def test_alphavantage_parsing_budget_and_intraday():
+    from app.market.providers import alphavantage
+    from app.market.providers.base import ProviderError
+    from app.market.symbols import get_symbol
+    from app.market.timeframes import get_timeframe
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert request.url.host == "www.alphavantage.co"
+        assert request.url.params["function"] == "TIME_SERIES_DAILY"
+        assert request.url.params["symbol"] == "TSCO.LON"
+        return httpx.Response(200, json={"Time Series (Daily)": {
+            "2026-09-30": {"1. open": "380.1", "2. high": "384", "3. low": "378", "4. close": "383.2", "5. volume": "100"},
+            "2026-09-29": {"1. open": "377", "2. high": "381", "3. low": "376", "4. close": "380.0", "5. volume": "90"},
+        }})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    tsco = get_symbol("TSCO.LON")
+    alphavantage.budget.__init__()
+    bars = alphavantage.fetch_candles("k", tsco, get_timeframe("1d"), 100, client=client)
+    assert [b.close for b in bars] == [380.0, 383.2]
+
+    import pytest
+
+    with pytest.raises(ProviderError, match="no intraday"):
+        alphavantage.fetch_candles("k", tsco, get_timeframe("1h"), 100, client=client)
+
+    alphavantage.budget.__init__()
+    alphavantage.budget.used_today = alphavantage.PER_DAY
+    alphavantage.budget.day = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d")
+    with pytest.raises(ProviderError, match="allowance"):
+        alphavantage.fetch_candles("k", tsco, get_timeframe("1d"), 100, client=client)
+    assert len(calls) == 1  # nothing sent once the budget is spent
+
+
+def test_alphavantage_limit_notice_is_explained():
+    from app.market.providers import alphavantage
+    from app.market.providers.base import ProviderError
+    from app.market.symbols import get_symbol
+    from app.market.timeframes import get_timeframe
+
+    import pytest
+
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"Information": "rate limit"})))
+    alphavantage.budget.__init__()
+    with pytest.raises(ProviderError, match="free limit"):
+        alphavantage.fetch_candles("k", get_symbol("BP.LON"), get_timeframe("1w"), 100, client=client)

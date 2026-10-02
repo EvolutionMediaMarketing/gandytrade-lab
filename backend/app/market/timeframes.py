@@ -54,4 +54,7 @@ def refresh_after_seconds(tf: Timeframe, provider: str = "oanda") -> int:
         seconds = 1800
     if provider == "twelvedata":
         seconds = max(seconds, 60)
+    elif provider == "alphavantage":
+        # 25 requests a day: each UK share refreshes at most twice a day (weekly/monthly once).
+        seconds = 12 * 3600 if tf.code == "1d" else 24 * 3600
     return seconds

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # Read-only market data. When a key is missing, clearly labelled sample data is used.
     oanda_token: str = ""
     twelvedata_key: str = ""
+    # London shares (daily/weekly/monthly) from Alpha Vantage's free plan.
+    alphavantage_key: str = ""
 
     # Where the built frontend lives inside the container.
     frontend_dir: str = "/app/frontend"

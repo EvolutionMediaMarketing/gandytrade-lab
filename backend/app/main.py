@@ -12,7 +12,7 @@ from . import __version__
 from .config import get_settings
 from .db import init_db, wait_for_database
 from .logsafe import install_log_redaction
-from .routes import auth, market
+from .routes import auth, favourites, market
 
 SECURITY_HEADERS = {
     "X-Robots-Tag": "noindex, nofollow, noarchive",
@@ -38,6 +38,14 @@ OPEN_PATHS = {"/api/health"}
 async def lifespan(_: FastAPI):
     wait_for_database()
     init_db()
+    from .db import new_session
+    from .market.directory import ensure_fixed_lists
+
+    db = new_session()
+    try:
+        ensure_fixed_lists(db)
+    finally:
+        db.close()
     yield
 
 
@@ -77,6 +85,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(market.router)
+    app.include_router(favourites.router)
 
     @app.get("/api/health")
     def health() -> dict:

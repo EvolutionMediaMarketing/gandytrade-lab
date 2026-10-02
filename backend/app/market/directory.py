@@ -23,6 +23,7 @@ from ..config import get_settings
 from ..models import Instrument
 from .providers.base import ProviderError
 from .providers.http import safe_client
+from . import uk_shares
 from .symbols import SYMBOLS, Symbol
 
 log = logging.getLogger(__name__)
@@ -190,11 +191,24 @@ def last_updated(db: Session, provider: str) -> datetime | None:
     return value
 
 
+def ensure_fixed_lists(db: Session, force: bool = False) -> int:
+    """London shares: a fixed list kept in the code, so no data requests are needed.
+    Returns how many were saved, or 0 if the stored list was already up to date."""
+    uk = uk_shares.rows()
+    have = db.scalar(select(func.count()).select_from(Instrument).where(Instrument.provider == "alphavantage"))
+    if force or have != len(uk):
+        return save(db, "alphavantage", uk)
+    return 0
+
+
 def refresh(db: Session, force: bool = False) -> dict[str, int | str]:
     """Refresh any provider list that's missing or over a week old."""
     settings = get_settings()
     result: dict[str, int | str] = {}
     now = datetime.now(timezone.utc)
+    uk_count = ensure_fixed_lists(db, force)
+    if uk_count:
+        result["alphavantage"] = uk_count
     jobs = (("oanda", settings.oanda_token, fetch_oanda), ("twelvedata", settings.twelvedata_key, fetch_twelvedata))
     for provider, key, fetch in jobs:
         if not key:

@@ -10,7 +10,7 @@ def test_catalogue(signed_in):
     codes = {s["code"] for s in data["symbols"]}
     assert {"EUR_USD", "XAU_USD", "BCO_USD", "AAPL", "SPY"} <= codes
     assert any(i["type"] == "ichimoku" for i in data["indicators"])
-    assert data["dataSources"] == {"oanda": False, "twelvedata": False}
+    assert data["dataSources"] == {"oanda": False, "twelvedata": False, "alphavantage": False}
 
 
 def test_chart_uses_labelled_sample_data_without_keys(signed_in):

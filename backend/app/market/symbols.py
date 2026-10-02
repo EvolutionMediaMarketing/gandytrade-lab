@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 class Symbol:
     code: str  # our code, also used in URLs
     name: str
-    asset_class: str  # forex | metal | commodity | index | bond | stock | etf
+    asset_class: str  # forex | metal | commodity | index | bond | stock | etf | ukstock
     provider: str  # oanda | twelvedata
     provider_symbol: str
     precision: int  # decimal places to show
@@ -61,6 +61,13 @@ SYMBOLS: dict[str, Symbol] = {
         Symbol("SPY", "S&P 500 ETF", "etf", "twelvedata", "SPY", 2, 520.0),
         Symbol("QQQ", "Nasdaq-100 ETF", "etf", "twelvedata", "QQQ", 2, 440.0),
         Symbol("VTI", "Total US Market ETF", "etf", "twelvedata", "VTI", 2, 260.0),
+        # London shares (Alpha Vantage free plan; prices in pence)
+        Symbol("LLOY.LON", "Lloyds Banking Group", "ukstock", "alphavantage", "LLOY.LON", 2, 60.0),
+        Symbol("BARC.LON", "Barclays", "ukstock", "alphavantage", "BARC.LON", 2, 250.0),
+        Symbol("TSCO.LON", "Tesco", "ukstock", "alphavantage", "TSCO.LON", 2, 380.0),
+        Symbol("BP.LON", "BP", "ukstock", "alphavantage", "BP.LON", 2, 420.0),
+        Symbol("SHEL.LON", "Shell", "ukstock", "alphavantage", "SHEL.LON", 2, 2700.0),
+        Symbol("AZN.LON", "AstraZeneca", "ukstock", "alphavantage", "AZN.LON", 2, 11000.0),
     ]
 }
 
