@@ -93,17 +93,25 @@ def variants(s: Strategy) -> list[dict]:
 # --- Jobs ------------------------------------------------------------------------------------------
 
 def start(db: Session, user: User, markets: list[str] | None = None, timeframes: list[str] | None = None,
-          automatic: bool = False) -> ResearchJob:
+          automatic: bool = False, strategy_keys: list[str] | None = None) -> ResearchJob:
     busy = db.scalar(select(ResearchJob).where(ResearchJob.user_id == user.id, ResearchJob.status.in_(("queued", "running"))))
     if busy is not None:
         raise ResearchError("A scan is already running. It'll finish in a few minutes.")
     markets = list(dict.fromkeys(markets or BASKET))[:MAX_MARKETS]
     timeframes = [t for t in dict.fromkeys(timeframes or DEFAULT_TIMEFRAMES) if t in TIMEFRAMES] or DEFAULT_TIMEFRAMES
+    available = {s.key: s for s in strategies()}
+    unknown = [k for k in (strategy_keys or []) if k not in available]
+    if unknown:
+        raise ResearchError(f"Unknown or non-scannable strategy: {', '.join(unknown)}.")
+    chosen = [available[k] for k in dict.fromkeys(strategy_keys or [])] or list(available.values())
     # One unit of work per market, timeframe and strategy, so no single step holds up the worker for long.
-    units = [[m, t, s.key] for m in markets for t in timeframes for s in strategies()
+    units = [[m, t, s.key] for m in markets for t in timeframes for s in chosen
              if not (s.intraday_only and get_timeframe(t).seconds > 900)]
+    if not units:
+        raise ResearchError("The scalping strategies only run on short candles: tick 5 or 15 minutes as well.")
     job = ResearchJob(user_id=user.id, status="queued", automatic=automatic,
-                      settings={"markets": markets, "timeframes": timeframes, "balance": BALANCE, "riskPct": 1.0},
+                      settings={"markets": markets, "timeframes": timeframes, "balance": BALANCE, "riskPct": 1.0,
+                                "strategies": [s.key for s in chosen] if strategy_keys else []},
                       todo=units, total=len(units), done=0, rows=[], skipped=[], message="Waiting for the worker to start it.")
     db.add(job)
     db.commit()
@@ -132,7 +140,8 @@ def schedule_weekly(db: Session) -> None:
         else:
             settings = {}
         try:
-            start(db, user, settings.get("markets"), settings.get("timeframes"), automatic=True)
+            start(db, user, settings.get("markets"), settings.get("timeframes"), automatic=True,
+                  strategy_keys=settings.get("strategies") or None)
             log.info("Queued the weekly strategy scan for user %s", user.id)
         except ResearchError:
             pass

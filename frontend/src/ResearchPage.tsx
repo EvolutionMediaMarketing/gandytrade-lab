@@ -33,6 +33,7 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
   const [jobs, setJobs] = useState<ResearchJob[]>([]);
   const [shown, setShown] = useState<ResearchJob | null>(null);
   const [markets, setMarkets] = useState<string[] | null>(null);
+  const [strategyPick, setStrategyPick] = useState<string[] | null>(null);
   const [timeframes, setTimeframes] = useState<string[]>(["1d"]);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +66,17 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
   }, [showId, shown?.id, onAuthError]);
 
   const chosen = markets ?? options?.basket.map((b) => b.code) ?? [];
+  const allStrategies = options?.strategies ?? [];
+  const chosenStrategies = strategyPick ?? allStrategies.map((s) => s.key);
+  const shortTf = timeframes.some((t) => t === "5m" || t === "15m");
+  const onlyScalpers = chosenStrategies.length > 0
+    && chosenStrategies.every((k) => allStrategies.find((s) => s.key === k)?.intradayOnly);
+  const scalpersIgnored = !shortTf && chosenStrategies.some((k) => allStrategies.find((s) => s.key === k)?.intradayOnly);
 
   function start() {
     setError(null);
-    api.startResearch({ markets: chosen, timeframes }).then(() => loadJobs()).catch((err) => {
+    const all = chosenStrategies.length === allStrategies.length;
+    api.startResearch({ markets: chosen, timeframes, strategies: all ? [] : chosenStrategies }).then(() => loadJobs()).catch((err) => {
       onAuthError(err);
       setError(err instanceof Error ? err.message : "Couldn't start the scan.");
     });
@@ -112,10 +120,40 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
             })}
           </div>
         </div>
-        {timeframes.some((t) => t === "5m" || t === "15m") && (
+        <div className="form-row">
+          <span className="field-label">
+            Strategies ({chosenStrategies.length}){" "}
+            <button type="button" className="link-button small-text" onClick={() => setStrategyPick(null)}>all</button>
+            {" · "}
+            <button type="button" className="link-button small-text" onClick={() => setStrategyPick(allStrategies.filter((s) => !s.intradayOnly).map((s) => s.key))}>no scalping</button>
+            {" · "}
+            <button type="button" className="link-button small-text" onClick={() => {
+              setStrategyPick(allStrategies.filter((s) => s.intradayOnly).map((s) => s.key));
+              if (!shortTf) setTimeframes(["5m"]);
+            }}>scalping only</button>
+          </span>
+          <div className="chips">
+            {allStrategies.map((st) => {
+              const on = chosenStrategies.includes(st.key);
+              return (
+                <button key={st.key} type="button" className={on ? "chip on" : "chip"}
+                  onClick={() => setStrategyPick(on ? chosenStrategies.filter((k) => k !== st.key) : [...chosenStrategies, st.key])}>
+                  {st.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {onlyScalpers && !shortTf && (
+          <p className="warn caution small-text">Scalping strategies only run on short candles: tick 5 minutes or 15 minutes above.</p>
+        )}
+        {scalpersIgnored && !onlyScalpers && (
+          <p className="muted small-text">The scalping strategies you've ticked are skipped on these timeframes; they only run on 5 and 15-minute candles.</p>
+        )}
+        {shortTf && (
           <p className="muted small-text">
-            5 and 15-minute scans use months of short candles and include the three scalping strategies. They take longer:
-            allow up to half an hour for the whole basket.
+            5 and 15-minute scans use months of short candles, so they take longer: allow up to half an hour for the whole
+            basket with every strategy. Fewer strategies or markets finish sooner.
           </p>
         )}
         {active ? (
@@ -125,7 +163,9 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
             <p className="muted small-text">It runs in the background: you can leave this page and come back.</p>
           </div>
         ) : (
-          <button type="button" className="primary" disabled={!chosen.length} onClick={start}>Run a new scan</button>
+          <button type="button" className="primary" disabled={!chosen.length || !chosenStrategies.length || (onlyScalpers && !shortTf)} onClick={start}>
+            Run a new scan
+          </button>
         )}
         {error && <p className="warn stop">{error}</p>}
         {jobs.filter((j) => j.status === "done").length > 1 && (
@@ -159,7 +199,8 @@ function Results({ job, options, onBacktest, onRunOnPaper }: {
   return (
     <>
       <p className="muted small-text">
-        Scan finished {when(job.finishedAt)}: {s.tested} combinations of market, timeframe, strategy and direction.
+        Scan finished {when(job.finishedAt)}: {s.tested} combinations of market, timeframe, strategy and direction
+        {job.settings.strategies?.length ? `, for ${job.settings.strategies.length} chosen strateg${job.settings.strategies.length === 1 ? "y" : "ies"}` : ""}.
       </p>
       <p className="warn caution">
         Testing this many combinations means a few will look good by luck. That's why the checks include different settings and

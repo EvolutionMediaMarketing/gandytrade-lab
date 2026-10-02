@@ -145,3 +145,27 @@ def test_weekly_scan(signed_in, monkeypatch):
     assert db.query(ResearchJob).count() == 1
     db.close()
     config.get_settings.cache_clear()
+
+
+def test_scan_only_the_chosen_strategies(signed_in, history):
+    r = signed_in.post("/api/research", json={"markets": ["XAU_USD", "XAG_USD"], "timeframes": ["1d", "5m"],
+                                              "strategies": ["breakout", "london_breakout"]})
+    assert r.status_code == 200, r.text
+    job = r.json()
+    # breakout on both timeframes, the London breakout only on 5-minute candles: 2 markets x 3
+    assert job["total"] == 6 and job["settings"]["strategies"] == ["breakout", "london_breakout"]
+    from app.db import new_session
+
+    db = new_session()
+    while research.work(db, budget=60):
+        pass
+    db.close()
+    rows = signed_in.get(f"/api/research/{job['id']}").json()["rows"]
+    assert {r["strategy"] for r in rows} <= {"breakout", "london_breakout"}
+
+
+def test_scalpers_alone_need_a_short_timeframe(signed_in):
+    r = signed_in.post("/api/research", json={"timeframes": ["1d"], "strategies": ["london_breakout"]})
+    assert r.status_code == 400 and "5 or 15 minutes" in r.json()["detail"]
+    assert signed_in.post("/api/research", json={"strategies": ["buy_hold"]}).status_code == 400
+    assert any(s["key"] == "london_breakout" for s in signed_in.get("/api/research/options").json()["strategies"])

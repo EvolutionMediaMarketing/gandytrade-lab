@@ -24,7 +24,8 @@ def options(db: Session = Depends(get_session), user: User = Depends(current_use
         except ValueError:
             continue  # not in the market list yet (it fills in once the OANDA list has been downloaded)
     return {"basket": basket, "timeframes": list(research.TIMEFRAMES), "defaultTimeframes": research.DEFAULT_TIMEFRAMES,
-            "checks": research.CHECKS, "minTrades": research.MIN_TRADES, "maxDrawdownPct": research.MAX_DRAWDOWN}
+            "checks": research.CHECKS, "minTrades": research.MIN_TRADES, "maxDrawdownPct": research.MAX_DRAWDOWN,
+            "strategies": [{"key": s.key, "name": s.name, "intradayOnly": s.intraday_only} for s in research.strategies()]}
 
 
 @router.get("")
@@ -35,7 +36,8 @@ def list_jobs(db: Session = Depends(get_session), user: User = Depends(current_u
 
 class NewScan(BaseModel):
     markets: list[str] = Field(default_factory=list, max_length=research.MAX_MARKETS)
-    timeframes: list[str] = Field(default_factory=list, max_length=3)
+    timeframes: list[str] = Field(default_factory=list, max_length=len(research.TIMEFRAMES))
+    strategies: list[str] = Field(default_factory=list, max_length=40)  # empty = all of them
 
 
 @router.post("")
@@ -47,7 +49,7 @@ def new_scan(body: NewScan, db: Session = Depends(get_session), user: User = Dep
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        job = research.start(db, user, markets or None, body.timeframes or None)
+        job = research.start(db, user, markets or None, body.timeframes or None, strategy_keys=body.strategies or None)
     except research.ResearchError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return research.job_dict(job)

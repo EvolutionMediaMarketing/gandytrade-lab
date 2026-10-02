@@ -535,7 +535,7 @@ export interface ResearchJob {
   id: number;
   status: "queued" | "running" | "done";
   automatic: boolean;
-  settings: { markets?: string[]; timeframes?: string[] };
+  settings: { markets?: string[]; timeframes?: string[]; strategies?: string[] };
   createdAt: string;
   finishedAt: string | null;
   done: number;
@@ -548,6 +548,7 @@ export interface ResearchJob {
 
 export interface ResearchOptions {
   basket: { code: string; name: string; assetClass: string }[];
+  strategies: { key: string; name: string; intradayOnly: boolean }[];
   timeframes: string[];
   defaultTimeframes: string[];
   checks: ResearchCheck[];
