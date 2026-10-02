@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 # Timeframes each free data service can keep up with. Short ones would use up the free allowances.
 # UK shares aren't offered: their free data is daily only, with no live price to fill an order at,
 # and only 25 requests a day.
-TIMEFRAMES = {"oanda": ["15m", "30m", "1h", "4h", "1d"], "twelvedata": ["1h", "4h", "1d"]}
+TIMEFRAMES = {"oanda": ["15m", "30m", "1h", "4h", "1d", "1w"], "twelvedata": ["1h", "4h", "1d"]}
 # How often a run that's waiting for a new candle looks again, per data service.
 LOOK_EVERY = {"oanda": 60, "twelvedata": 300}
 NOT_AUTOMATIC = {"buy_hold", "support_resistance"}  # the yardstick, and the one that needs your own levels

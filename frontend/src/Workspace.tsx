@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
-import BacktestPage from "./BacktestPage";
+import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
 import PaperPage from "./PaperPage";
+import ResearchPage from "./ResearchPage";
 import type { TradePlan } from "./PlanZones";
 import SettingsPage from "./SettingsPage";
 import SignalPanel from "./SignalPanel";
@@ -71,6 +72,7 @@ function defaults(def: IndicatorDef): Record<string, number> {
 const PAGES = [
   { key: "charts", label: "Charts" },
   { key: "backtest", label: "Backtest" },
+  { key: "research", label: "Research" },
   { key: "paper", label: "Paper" },
   { key: "tools", label: "Tools" },
   { key: "learn", label: "Learn" },
@@ -86,7 +88,7 @@ function pageFromHash(): Page {
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [page, setPage] = useState<Page>(pageFromHash);
   const [autoPrefill, setAutoPrefill] = useState<AutoPrefill | null>(null);
-  const [backtestInit, setBacktestInit] = useState<{ symbol?: string; strategy?: string; timeframe?: string } | undefined>();
+  const [backtestInit, setBacktestInit] = useState<BacktestInit | undefined>();
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash());
@@ -296,6 +298,11 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "tools" && (
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />
+      )}
+      {page === "research" && (
+        <ResearchPage onAuthError={handleAuth}
+          onBacktest={(r) => { setBacktestInit({ symbol: r.symbol, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, mode: "cfd", years: 0 }); go("backtest"); }}
+          onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
       )}
       {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (

@@ -42,15 +42,27 @@ const DEFAULT_FORM: Form = {
   direction: "long", years: 0, daily_loss_pct: 3, max_drawdown_pct: 20, costs: {},
 };
 
-function loadForm(initial?: { symbol?: string; strategy?: string; timeframe?: string }): Form {
+export interface BacktestInit {
+  symbol?: string;
+  strategy?: string;
+  timeframe?: string;
+  direction?: string;
+  mode?: "cash" | "cfd";
+  years?: number;
+}
+
+function loadForm(initial?: BacktestInit): Form {
   let saved: Partial<Form> = {};
   try {
     saved = JSON.parse(localStorage.getItem(FORM_KEY) || "{}");
   } catch {
     /* ignore */
   }
-  const picked = Object.fromEntries(Object.entries(initial ?? {}).filter(([, v]) => v));
-  return { ...DEFAULT_FORM, ...saved, ...picked, ...(picked.symbol ? { mode: "" as const, costs: {} } : {}) };
+  const picked: Partial<Form> = Object.fromEntries(Object.entries(initial ?? {}).filter(([, v]) => v !== undefined && v !== "")) as Partial<Form>;
+  const form = { ...DEFAULT_FORM, ...saved, ...picked, ...(picked.symbol ? { mode: picked.mode ?? ("" as const), costs: {} } : {}) };
+  // Arriving from Research: the strategy's default settings, as scanned.
+  if (initial?.direction && initial.strategy) form.params = { ...form.params, [initial.strategy]: {} };
+  return form;
 }
 
 export const money = (v: number | null | undefined, dp = 2) =>
@@ -65,7 +77,7 @@ interface Props {
   favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   onAuthError: (err: unknown) => void;
-  initial?: { symbol?: string; strategy?: string; timeframe?: string };
+  initial?: BacktestInit;
   onRunOnPaper?: (p: AutoPrefill) => void;
 }
 

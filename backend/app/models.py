@@ -235,3 +235,23 @@ class AutoRun(Base):
     last_message: Mapped[str] = mapped_column(String(255), default="")
     errors: Mapped[int] = mapped_column(Integer, default=0)  # problems in a row; the run pauses itself after a few
     backtest: Mapped[dict] = mapped_column(JSON, default=dict)  # what the backtest showed when the run started
+
+
+class ResearchJob(Base):
+    """A strategy scan: every strategy backtested across a basket of markets, run in the background."""
+
+    __tablename__ = "research_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(10), index=True)  # queued | running | done
+    automatic: Mapped[bool] = mapped_column(default=False)  # the weekly scan, rather than one you started
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    todo: Mapped[list] = mapped_column(JSON, default=list)  # [market, timeframe] pairs still to test
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    rows: Mapped[list] = mapped_column(JSON, default=list)  # one result per market, timeframe, strategy and direction
+    skipped: Mapped[list] = mapped_column(JSON, default=list)
+    message: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

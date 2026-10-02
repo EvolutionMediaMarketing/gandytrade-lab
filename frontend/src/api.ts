@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AutoOptions, AutoRun, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AutoOptions, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -98,5 +98,10 @@ export const api = {
     request<AutoRun>("/api/paper/auto", { method: "POST", body: JSON.stringify(body) }),
   changeAutoRun: (id: number, action: "pause" | "resume" | "stop", closeOpen = false) =>
     request<AutoRun>(`/api/paper/auto/${id}`, { method: "POST", body: JSON.stringify({ action, close_open: closeOpen }) }),
+  researchOptions: () => request<ResearchOptions>("/api/research/options"),
+  researchJobs: (background = false) => request<{ jobs: ResearchJob[] }>("/api/research", {}, background),
+  researchJob: (id: number, background = false) => request<ResearchJob>(`/api/research/${id}`, {}, background),
+  startResearch: (body: { markets: string[]; timeframes: string[] }) =>
+    request<ResearchJob>("/api/research", { method: "POST", body: JSON.stringify(body) }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

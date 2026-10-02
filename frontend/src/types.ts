@@ -480,3 +480,71 @@ export interface AutoPrefill {
   params?: Record<string, number>;
   direction?: string;
 }
+
+export type ResearchCheck = "profitable" | "enoughTrades" | "drawdown" | "robust" | "recent";
+
+export interface ResearchRow {
+  market: string;
+  name: string;
+  assetClass: string;
+  timeframe: string;
+  strategy: string;
+  strategyName: string;
+  direction: "long" | "both";
+  years: number;
+  returnPct: number;
+  annualPct: number | null;
+  trades: number;
+  tradesPerYear: number | null;
+  winRate: number | null;
+  avgR: number | null;
+  profitFactor: number | null;
+  maxDrawdownPct: number;
+  costs: number;
+  variantReturns: number[];
+  recentTrades: number;
+  recentNet: number;
+  buyHoldReturnPct: number;
+  buyHoldDrawdownPct: number;
+  beatsBuyHold: boolean;
+  smootherThanBuyHold: boolean;
+  checks: Record<ResearchCheck, boolean>;
+  passed: number;
+  score: number;
+}
+
+export interface ResearchAcross {
+  strategy: string;
+  strategyName: string;
+  direction: "long" | "both";
+  timeframe: string;
+  markets: number;
+  held: number;
+  heldMarkets: { market: string; name: string; returnPct: number; passed: number }[];
+  avgAnnualPct: number;
+  tradesPerYear: number;
+}
+
+export interface ResearchJob {
+  id: number;
+  status: "queued" | "running" | "done";
+  automatic: boolean;
+  settings: { markets?: string[]; timeframes?: string[] };
+  createdAt: string;
+  finishedAt: string | null;
+  done: number;
+  total: number;
+  message: string;
+  summary?: { shortlist: ResearchRow[]; nearMisses: ResearchRow[]; acrossMarkets: ResearchAcross[]; tested: number };
+  rows?: ResearchRow[];
+  skipped?: { market: string; timeframe: string; reason: string }[];
+}
+
+export interface ResearchOptions {
+  basket: { code: string; name: string; assetClass: string }[];
+  timeframes: string[];
+  defaultTimeframes: string[];
+  checks: ResearchCheck[];
+  minTrades: number;
+  maxDrawdownPct: number;
+}

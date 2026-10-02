@@ -22,6 +22,7 @@ from .logsafe import install_log_redaction
 from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
+from . import research
 from .paper import auto
 from .paper import service as paper
 
@@ -81,6 +82,14 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None) ->
         except Exception:
             db.rollback()
             log.exception("Automatic trading pass failed")
+            stats["errors"] += 1
+        # Strategy research: a slice of any scan in progress, and the weekly scan when it's due.
+        try:
+            research.schedule_weekly(db)
+            research.work(db)
+        except Exception:
+            db.rollback()
+            log.exception("Research pass failed")
             stats["errors"] += 1
         # Keep each account's high point, day-start figure and drawdown limit up to date.
         quotes: dict = {}
