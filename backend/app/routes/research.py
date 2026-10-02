@@ -23,7 +23,17 @@ def options(db: Session = Depends(get_session), user: User = Depends(current_use
             basket.append({"code": s.code, "name": s.name, "assetClass": s.asset_class})
         except ValueError:
             continue  # not in the market list yet (it fills in once the OANDA list has been downloaded)
-    return {"basket": basket, "timeframes": list(research.TIMEFRAMES), "defaultTimeframes": research.DEFAULT_TIMEFRAMES,
+    sectors = []
+    for name, codes in research.SECTORS.items():
+        found, missing = [], []
+        for code in codes:
+            try:
+                sym = lookup(db, code)
+                found.append({"code": sym.code, "name": sym.name, "assetClass": sym.asset_class, "provider": sym.provider})
+            except ValueError:
+                missing.append(code)
+        sectors.append({"name": name, "markets": found, "missing": missing})
+    return {"basket": basket, "sectors": sectors, "timeframes": list(research.TIMEFRAMES), "defaultTimeframes": research.DEFAULT_TIMEFRAMES,
             "checks": research.CHECKS, "minTrades": research.MIN_TRADES, "maxDrawdownPct": research.MAX_DRAWDOWN,
             "strategies": [{"key": s.key, "name": s.name, "intradayOnly": s.intraday_only} for s in research.strategies()]}
 

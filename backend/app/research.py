@@ -51,6 +51,23 @@ BASKET = [
     "SPX500_USD", "NAS100_USD", "UK100_GBP", "DE30_EUR", "JP225_USD",
     "EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD",
 ]
+# Ready-made groups of markets. Commodities, indices and currencies come from OANDA; company shares
+# and sector funds (ETFs) from Twelve Data's free plan, which allows only a few requests a minute,
+# so those are scanned on daily and weekly candles and a few at a time.
+SECTORS: dict[str, list[str]] = {
+    "Technology": ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMD", "AVGO", "XLK", "NAS100_USD"],
+    "Pharma & health": ["LLY", "JNJ", "PFE", "MRK", "ABBV", "UNH", "AMGN", "XLV", "IBB"],
+    "Energy": ["XOM", "CVX", "COP", "XLE", "BCO_USD", "WTICO_USD", "NATGAS_USD"],
+    "Financials": ["JPM", "BAC", "GS", "V", "MA", "XLF"],
+    "Agriculture": ["CORN_USD", "WHEAT_USD", "SOYBN_USD", "SUGAR_USD", "DBA", "ADM", "DE"],
+    "Metals & mining": ["XAU_USD", "XAG_USD", "XCU_USD", "XPT_USD", "GDX", "FCX", "NEM"],
+    "Consumer": ["KO", "PG", "PEP", "MCD", "WMT", "COST", "XLP"],
+    "Stock indices": ["SPX500_USD", "NAS100_USD", "US30_USD", "UK100_GBP", "DE30_EUR", "JP225_USD"],
+    "Currencies": ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", "EUR_GBP"],
+}
+SHARE_TIMEFRAMES = ("1d", "1w")  # Twelve Data markets: one request gives years of daily or weekly candles
+SHARE_LOADS_PER_MINUTE = 3  # leaves most of the 8-a-minute allowance for your charts
+MAX_RETRIES = 5
 TIMEFRAMES = ("5m", "15m", "4h", "1d", "1w")
 DEFAULT_TIMEFRAMES = ["1d"]
 MAX_MARKETS = 30
@@ -147,6 +164,22 @@ def schedule_weekly(db: Session) -> None:
             pass
 
 
+class _Later(Exception):
+    """The free allowance for US share prices is used up for now: try this market again next pass."""
+
+
+_share_loads: list[float] = []
+_cache: dict = {}  # the market being scanned, kept between passes so its prices aren't fetched twice
+
+
+def _pace_shares() -> None:
+    now = time.time()
+    _share_loads[:] = [t for t in _share_loads if now - t < 60]
+    if len(_share_loads) >= SHARE_LOADS_PER_MINUTE:
+        raise _Later()
+    _share_loads.append(now)
+
+
 def work(db: Session, budget: float = PASS_BUDGET_SECONDS) -> bool:
     """Do some of the oldest unfinished scan. Returns True if there was anything to do."""
     job = db.scalar(select(ResearchJob).where(ResearchJob.status.in_(("queued", "running"))).order_by(ResearchJob.id).limit(1))
@@ -156,7 +189,10 @@ def work(db: Session, budget: float = PASS_BUDGET_SECONDS) -> bool:
     job.status = "running"
     rows, skipped, todo = list(job.rows or []), list(job.skipped or []), list(job.todo or [])
     first = True
-    cache: dict = {}
+    cache = _cache
+    if cache.get("job") != job.id:  # a new scan starts with fresh prices
+        cache.clear()
+        cache["job"] = job.id
     skipped_keys = {(k["market"], k["timeframe"]) for k in skipped}
     while todo and (first or time.time() - started < budget):  # always at least one unit per pass
         first = False
@@ -170,7 +206,20 @@ def work(db: Session, budget: float = PASS_BUDGET_SECONDS) -> bool:
                 if note and (code, tf) not in skipped_keys:
                     skipped.append({"market": code, "timeframe": tf, "reason": note})
                     skipped_keys.add((code, tf))
-        except (ProviderError, ValueError) as exc:
+        except _Later:
+            todo.insert(0, unit)  # back to the front; carries on next pass
+            job.message = (f"Tested {job.total - len(todo)} of {job.total}. Pausing briefly: US share prices "
+                           "are fetched a few a minute to stay inside the free allowance.")
+            break
+        except ProviderError as exc:
+            tries = (unit[3] if len(unit) > 3 else 0) + 1
+            if "limit" in str(exc).lower() and tries < MAX_RETRIES:
+                todo.insert(0, [code, tf, unit[2] if len(unit) > 2 else keys[0], tries])
+                break
+            if (code, tf) not in skipped_keys:
+                skipped.append({"market": code, "timeframe": tf, "reason": str(exc)[:200]})
+                skipped_keys.add((code, tf))
+        except ValueError as exc:
             if (code, tf) not in skipped_keys:
                 skipped.append({"market": code, "timeframe": tf, "reason": str(exc)[:200]})
                 skipped_keys.add((code, tf))
@@ -203,11 +252,16 @@ def _market_data(db: Session, code: str, timeframe: str, cache: dict) -> dict:
     key = (code, timeframe)
     if key in cache:
         return cache[key]
-    cache.clear()  # only the market being scanned is kept in memory
+    for k in [k for k in cache if k != "job"]:
+        del cache[k]  # only the market being scanned is kept in memory
     symbol = lookup(db, code)
-    if symbol.provider != "oanda":
-        out = {"note": "Only markets with OANDA data are scanned (the other free feeds allow too few requests)."}
+    if symbol.provider == "alphavantage":
+        out = {"note": "UK shares aren't scanned: their free data allows only 25 requests a day."}
+    elif symbol.provider == "twelvedata" and timeframe not in SHARE_TIMEFRAMES:
+        out = {"note": "US shares and funds are scanned on daily and weekly candles only (free data limits)."}
     else:
+        if symbol.provider == "twelvedata":
+            _pace_shares()
         tf = get_timeframe(timeframe)
         history = get_history(db, symbol, tf)
         bars = history.bars

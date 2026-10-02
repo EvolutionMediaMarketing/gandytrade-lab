@@ -548,6 +548,7 @@ export interface ResearchJob {
 
 export interface ResearchOptions {
   basket: { code: string; name: string; assetClass: string }[];
+  sectors: { name: string; markets: { code: string; name: string; assetClass: string; provider: string }[]; missing: string[] }[];
   strategies: { key: string; name: string; intradayOnly: boolean }[];
   timeframes: string[];
   defaultTimeframes: string[];

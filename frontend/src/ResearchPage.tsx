@@ -34,6 +34,7 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
   const [shown, setShown] = useState<ResearchJob | null>(null);
   const [markets, setMarkets] = useState<string[] | null>(null);
   const [strategyPick, setStrategyPick] = useState<string[] | null>(null);
+  const [sectorPick, setSectorPick] = useState<string[]>([]);
   const [timeframes, setTimeframes] = useState<string[]>(["1d"]);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +66,14 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
     api.researchJob(showId).then(setShown).catch(onAuthError);
   }, [showId, shown?.id, onAuthError]);
 
-  const chosen = markets ?? options?.basket.map((b) => b.code) ?? [];
+  // Markets on offer: the default basket, or the sectors you've picked (all of them ticked to start with).
+  const sectorMarkets = (options?.sectors ?? []).filter((x) => sectorPick.includes(x.name)).flatMap((x) => x.markets);
+  const offered = sectorPick.length
+    ? [...new Map(sectorMarkets.map((m) => [m.code, m])).values()]
+    : (options?.basket ?? []).map((b) => ({ ...b, provider: "oanda" }));
+  const chosen = markets ?? offered.map((b) => b.code);
+  const shareCount = offered.filter((m) => chosen.includes(m.code) && m.provider !== "oanda").length;
+  const missing = (options?.sectors ?? []).filter((x) => sectorPick.includes(x.name)).flatMap((x) => x.missing);
   const allStrategies = options?.strategies ?? [];
   const chosenStrategies = strategyPick ?? allStrategies.map((s) => s.key);
   const shortTf = timeframes.some((t) => t === "5m" || t === "15m");
@@ -107,9 +115,30 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
           </div>
         </div>
         <div className="form-row">
+          <span className="field-label">
+            Sectors{" "}
+            {sectorPick.length > 0 && (
+              <button type="button" className="link-button small-text" onClick={() => { setSectorPick([]); setMarkets(null); }}>back to the mixed basket</button>
+            )}
+          </span>
+          <div className="chips">
+            {(options?.sectors ?? []).map((x) => {
+              const on = sectorPick.includes(x.name);
+              return (
+                <button key={x.name} type="button" className={on ? "chip on" : "chip"}
+                  title={x.markets.map((m) => m.name).join(", ")}
+                  onClick={() => { setSectorPick(on ? sectorPick.filter((n) => n !== x.name) : [...sectorPick, x.name]); setMarkets(null); }}>
+                  {x.name}
+                </button>
+              );
+            })}
+          </div>
+          <span className="muted small-text">Pick one or more sectors to scan their markets instead of the mixed basket.</span>
+        </div>
+        <div className="form-row">
           <span className="field-label">Markets ({chosen.length})</span>
           <div className="chips">
-            {options?.basket.map((b) => {
+            {offered.map((b) => {
               const on = chosen.includes(b.code);
               return (
                 <button key={b.code} type="button" className={on ? "chip on" : "chip"} title={b.name}
@@ -149,6 +178,15 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
         )}
         {scalpersIgnored && !onlyScalpers && (
           <p className="muted small-text">The scalping strategies you've ticked are skipped on these timeframes; they only run on 5 and 15-minute candles.</p>
+        )}
+        {shareCount > 0 && (
+          <p className="muted small-text">
+            {shareCount} US share{shareCount === 1 ? "" : "s"} or fund{shareCount === 1 ? "" : "s"}: these are scanned on daily and weekly
+            candles only, about three a minute to stay inside the free data allowance.
+          </p>
+        )}
+        {missing.length > 0 && (
+          <p className="muted small-text">Not in your market list, so left out (not on the free data plans, or the list hasn't downloaded yet): {missing.join(", ")}.</p>
         )}
         {shortTf && (
           <p className="muted small-text">

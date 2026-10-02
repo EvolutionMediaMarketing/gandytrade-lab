@@ -28,6 +28,8 @@ def _bars(n=1200, drift=0.0006, seed=3):
 @pytest.fixture()
 def history(monkeypatch):
     calls = []
+    research._share_loads.clear()
+    research._cache.clear()
 
     def fake(db, symbol, tf, limit=5000):
         calls.append(symbol.code)
@@ -70,9 +72,13 @@ def test_only_oanda_markets_are_scanned(client, history):
     from app.db import new_session
 
     db = new_session()
-    rows, note = research.scan_market(db, "AAPL", "1d")
+    rows, note = research.scan_market(db, "AAPL", "5m")
+    assert rows == [] and "daily and weekly" in note
+    rows, note = research.scan_market(db, "LLOY.LON", "1d")
+    assert rows == [] and "UK shares" in note
+    rows, note = research.scan_market(db, "AAPL", "1d")  # US shares are scanned on daily candles
     db.close()
-    assert rows == [] and "OANDA" in note
+    assert rows and note == ""
 
 
 def test_scan_runs_in_slices_and_suggests(signed_in, history, monkeypatch):
@@ -97,7 +103,7 @@ def test_scan_runs_in_slices_and_suggests(signed_in, history, monkeypatch):
     db.close()
     done = signed_in.get(f"/api/research/{job['id']}").json()
     assert done["status"] == "done" and done["finishedAt"]
-    assert any(s["market"] == "AAPL" for s in done["skipped"])
+    assert any(r["market"] == "AAPL" for r in done["rows"])
     summary = done["summary"]
     assert summary["tested"] == len(done["rows"]) > 0
     assert all(r["passed"] == len(research.CHECKS) for r in summary["shortlist"])
@@ -169,3 +175,22 @@ def test_scalpers_alone_need_a_short_timeframe(signed_in):
     assert r.status_code == 400 and "5 or 15 minutes" in r.json()["detail"]
     assert signed_in.post("/api/research", json={"strategies": ["buy_hold"]}).status_code == 400
     assert any(s["key"] == "london_breakout" for s in signed_in.get("/api/research/options").json()["strategies"])
+
+
+def test_us_shares_are_paced_and_sectors_listed(signed_in, history, monkeypatch):
+    monkeypatch.setattr(research, "SHARE_LOADS_PER_MINUTE", 1)
+    r = signed_in.post("/api/research", json={"markets": ["AAPL", "MSFT"], "timeframes": ["1d"], "strategies": ["breakout"]})
+    job = r.json()
+    from app.db import new_session
+
+    db = new_session()
+    research.work(db, budget=60)  # AAPL loads; MSFT has to wait for the next minute
+    mid = signed_in.get(f"/api/research/{job['id']}").json()
+    assert mid["status"] == "running" and mid["done"] == 1 and "free allowance" in mid["message"]
+    research._share_loads.clear()  # a minute later
+    research.work(db, budget=60)
+    db.close()
+    done = signed_in.get(f"/api/research/{job['id']}").json()
+    assert done["status"] == "done" and {r["market"] for r in done["rows"]} == {"AAPL", "MSFT"}
+    sectors = {s["name"]: s for s in signed_in.get("/api/research/options").json()["sectors"]}
+    assert "Pharma & health" in sectors and any(m["code"] == "JNJ" for m in sectors["Pharma & health"]["markets"])
