@@ -301,3 +301,12 @@ def test_delete_account_needs_its_name_and_removes_everything(signed_in, feed):
     assert db.query(PaperTrade).count() == 0 and db.query(PaperEvent).count() == 0 and db.query(AutoRun).count() == 0
     assert db.query(SecurityEvent).filter(SecurityEvent.event == "paper_account_deleted").count() == 1
     db.close()
+
+
+def test_account_list_counts_runs(signed_in, feed):
+    cfd = _accounts(signed_in)["cfd"]["id"]
+    run = _start(signed_in, cfd).json()
+    assert _accounts(signed_in)["cfd"]["autoRunning"] == 1
+    signed_in.post(f"/api/paper/auto/{run['id']}", json={"action": "pause"})
+    a = _accounts(signed_in)["cfd"]
+    assert a["autoRunning"] == 0 and a["autoPaused"] == 1

@@ -107,7 +107,11 @@ export default function PaperPage({ onAuthError, onOpenChart, catalogue, favouri
             <li key={a.id}>
               <button type="button" className={selected === a.id ? "acct on" : "acct"} onClick={() => { setSelected(a.id); setJournal(null); }}>
                 <span className="acct-name">{a.name}</span>
-                <span className="muted">{a.mode === "cash" ? "Real shares" : "CFD / spread bet"} · {a.openCount} open</span>
+                <span className="muted">
+                  {a.mode === "cash" ? "Real shares" : "CFD / spread bet"} · {a.openCount} open trade{a.openCount === 1 ? "" : "s"}
+                  {a.autoRunning ? ` · ${a.autoRunning} automatic run${a.autoRunning === 1 ? "" : "s"}` : ""}
+                  {a.autoPaused ? ` · ${a.autoPaused} paused` : ""}
+                </span>
                 <span className="acct-eq">{money(a.equity)}</span>
                 <span className={a.returnPct >= 0 ? "up" : "down"}>{pct(a.returnPct)}</span>
                 {a.halted && <span className="tag stop">Paused</span>}

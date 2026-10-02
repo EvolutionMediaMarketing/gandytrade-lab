@@ -373,6 +373,8 @@ export interface PaperAccount {
   haltReason: string;
   archived: boolean;
   openCount: number;
+  autoRunning?: number;
+  autoPaused?: number;
   block: string;
   open?: PaperTrade[];
   closed?: PaperTrade[];

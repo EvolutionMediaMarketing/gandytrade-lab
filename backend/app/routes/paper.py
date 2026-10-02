@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_session
@@ -74,6 +74,10 @@ def _account_dict(db: Session, acct: PaperAccount, quotes: dict, detail: bool = 
         "openRisk": round(paper.open_risk(db, acct), 2),
         "openRiskLimit": round(paper.open_risk_limit(acct, state["equity"]), 2), "halted": acct.halted, "haltReason": acct.halt_reason,
         "archived": acct.archived, "openCount": len(state["valued"]),
+        "autoRunning": db.scalar(select(func.count()).select_from(AutoRun).where(
+            AutoRun.account_id == acct.id, AutoRun.status == "running")) or 0,
+        "autoPaused": db.scalar(select(func.count()).select_from(AutoRun).where(
+            AutoRun.account_id == acct.id, AutoRun.status == "paused")) or 0,
         "block": paper.entry_block(acct, state["equity"]),
     }
     if detail:
