@@ -42,14 +42,15 @@ const DEFAULT_FORM: Form = {
   direction: "long", years: 0, daily_loss_pct: 3, max_drawdown_pct: 20, costs: {},
 };
 
-function loadForm(initial?: Partial<Form>): Form {
+function loadForm(initial?: { symbol?: string; strategy?: string; timeframe?: string }): Form {
   let saved: Partial<Form> = {};
   try {
     saved = JSON.parse(localStorage.getItem(FORM_KEY) || "{}");
   } catch {
     /* ignore */
   }
-  return { ...DEFAULT_FORM, ...saved, ...initial };
+  const picked = Object.fromEntries(Object.entries(initial ?? {}).filter(([, v]) => v));
+  return { ...DEFAULT_FORM, ...saved, ...picked, ...(picked.symbol ? { mode: "" as const, costs: {} } : {}) };
 }
 
 export const money = (v: number | null | undefined, dp = 2) =>
@@ -64,7 +65,7 @@ interface Props {
   favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   onAuthError: (err: unknown) => void;
-  initial?: { symbol?: string; strategy?: string };
+  initial?: { symbol?: string; strategy?: string; timeframe?: string };
 }
 
 export default function BacktestPage({ catalogue, favourites, onToggleFavourite, onAuthError, initial }: Props) {

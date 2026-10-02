@@ -14,7 +14,16 @@ from ..timeframes import Timeframe
 from .base import Bar
 
 
+# Always build the same long path and show its most recent part, so a short chart
+# and a long backtest of the same market agree with each other.
+SAMPLE_SPAN = 6000
+
+
 def generate(symbol: Symbol, tf: Timeframe, count: int, now: float | None = None) -> list[Bar]:
+    return _path(symbol, tf, max(count, SAMPLE_SPAN), now)[-count:]
+
+
+def _path(symbol: Symbol, tf: Timeframe, count: int, now: float | None) -> list[Bar]:
     now = time.time() if now is None else now
     last_open = int(now // tf.seconds) * tf.seconds
     seed = int(hashlib.sha256(f"{symbol.code}:{tf.code}".encode()).hexdigest()[:12], 16)

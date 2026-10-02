@@ -254,3 +254,44 @@ export interface PositionSize {
   costGbp: number;
   marginGbp: number | null;
 }
+
+// --- Signal assistant ---
+
+export type SignalStatus = "complete" | "forming" | "in_trade" | "none";
+
+export interface SignalSide {
+  side: "long" | "short";
+  status: SignalStatus;
+  checks: { label: string; ok: boolean }[];
+  met: number;
+  total: number;
+  reason: string;
+  evidence: { trades: number; winRate: number | null; avgR: number | null; lowSample: boolean };
+  plan: null | {
+    entry: number; stop: number; units: number; riskGbp: number; valueGbp: number; note: string; stopRule: string; exitRule: string;
+  };
+}
+
+export interface SignalCard {
+  key: string;
+  name: string;
+  summary: string;
+  status: SignalStatus;
+  best: SignalSide;
+  sides: SignalSide[];
+  history: { trades: number; returnPct: number; annualPct: number | null; maxDrawdownPct: number; winRate: number | null; years: number; beatsBuyHold: boolean };
+  openTrade?: { side: "long" | "short"; since: number; entry: number; stop: number; exitRule: string };
+}
+
+export interface SignalsResponse {
+  symbol: SymbolInfo;
+  timeframe: string;
+  candleClosed: number;
+  mode: "cash" | "cfd";
+  balance: number;
+  riskPct: number;
+  sample: boolean;
+  years: number;
+  buyHold: { returnPct: number; annualPct: number | null };
+  strategies: SignalCard[];
+}

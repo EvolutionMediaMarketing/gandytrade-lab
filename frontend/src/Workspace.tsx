@@ -4,6 +4,7 @@ import ChartView from "./ChartView";
 import BacktestPage from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import MarketPicker from "./MarketPicker";
+import SignalPanel from "./SignalPanel";
 import ToolsPage from "./ToolsPage";
 import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo } from "./types";
 
@@ -77,7 +78,7 @@ function pageFromHash(): Page {
 
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [page, setPage] = useState<Page>(pageFromHash);
-  const [backtestInit, setBacktestInit] = useState<{ symbol?: string; strategy?: string } | undefined>();
+  const [backtestInit, setBacktestInit] = useState<{ symbol?: string; strategy?: string; timeframe?: string } | undefined>();
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash());
@@ -97,7 +98,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panel, setPanel] = useState<"" | "indicators" | "signals">("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const inFlight = useRef(false);
   // When you last touched the page, and when we last asked the server for data. An automatic
@@ -250,7 +251,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />
       )}
       {page === "learn" && (
-        <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy, symbol: prefs.symbol }); go("backtest"); }} />
+        <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} />
       )}
 
       {page === "charts" && (<>
@@ -284,9 +285,13 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           </select>
         </label>
 
-        <button className={panelOpen ? "secondary on" : "secondary"} onClick={() => setPanelOpen((o) => !o)}
-          aria-expanded={panelOpen}>
+        <button className={panel === "indicators" ? "secondary on" : "secondary"} onClick={() => setPanel((p) => (p === "indicators" ? "" : "indicators"))}
+          aria-expanded={panel === "indicators"}>
           Indicators ({prefs.indicators.length})
+        </button>
+        <button className={panel === "signals" ? "secondary on" : "secondary"} onClick={() => setPanel((p) => (p === "signals" ? "" : "signals"))}
+          aria-expanded={panel === "signals"} title="What each strategy's rules say about this chart">
+          Signals
         </button>
         <button className="ghost" onClick={() => load()} disabled={loading} title="Fetch the latest prices now">
           {loading ? "Loading…" : "Refresh"}
@@ -311,12 +316,22 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       ))}
       {error && <div className="banner error" role="alert">{error}</div>}
 
-      <div className={panelOpen ? "body with-panel" : "body"}>
+      <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? <ChartView data={data} /> : !error && <div className="splash">Loading chart…</div>}
         </section>
 
-        {panelOpen && catalogue && (
+        {panel === "signals" && (
+          <aside className="panel" aria-label="Signal assistant">
+            <SignalPanel symbol={prefs.symbol} timeframe={prefs.timeframe} lastBarTime={data?.bars[data.bars.length - 1]?.time}
+              precision={data?.symbol.precision ?? 5} onAuthError={handleAuth}
+              onBacktest={(strategy) => {
+                setBacktestInit({ strategy, symbol: prefs.symbol, timeframe: ["1h", "4h", "1d", "1w"].includes(prefs.timeframe) ? prefs.timeframe : "1d" });
+                go("backtest");
+              }} />
+          </aside>
+        )}
+        {panel === "indicators" && catalogue && (
           <aside className="panel" aria-label="Indicators">
             <h2>Indicators</h2>
             <p className="muted small-text">Tick to add. Each one explains what it measures.</p>

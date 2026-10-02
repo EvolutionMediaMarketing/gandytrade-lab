@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PositionSize, SignalsResponse, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -51,6 +51,10 @@ export const api = {
       "/api/chart",
       { method: "POST", body: JSON.stringify({ symbol, timeframe, style, limit, indicators }) },
       background,
+    ),
+  signals: (symbol: string, timeframe: string, balance: number, risk: number, background = false) =>
+    request<SignalsResponse>(
+      `/api/signals?${new URLSearchParams({ symbol, timeframe, balance: String(balance), risk: String(risk) })}`, {}, background,
     ),
   strategies: () => request<StrategiesResponse>("/api/strategies"),
   runBacktest: (body: BacktestRequest) =>
