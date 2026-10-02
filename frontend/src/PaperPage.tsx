@@ -154,6 +154,7 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
 
             <div className="card">
               <h3>Closed trades</h3>
+              <p className="muted small-text">Open the journal for any trade to write what happened and the lesson you took from it.</p>
               {!detail.closed?.length ? <p className="muted">None yet.</p> : (
                 <div className="table-wrap">
                   <table className="trades">
@@ -168,7 +169,11 @@ export default function PaperPage({ onAuthError, onOpenChart }: { onAuthError: (
                           <td className={`num ${(t.pnl ?? 0) >= 0 ? "up" : "down"}`}>{money(t.pnl)}</td>
                           <td className="num">{t.r === null ? "–" : t.r.toFixed(2)}</td>
                           <td className={`num score s${Math.round(t.ruleScore / 25)}`}>{t.ruleScore}</td>
-                          <td>{t.lesson ? "" : <span className="muted small">add a lesson</span>}</td>
+                          <td>
+                            <button type="button" className={t.lesson ? "ghost small" : "small"} onClick={(e) => { e.stopPropagation(); setJournal(t); }}>
+                              {t.lesson ? "Journal" : "Write journal"}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
