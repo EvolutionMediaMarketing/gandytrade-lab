@@ -3,7 +3,7 @@ import { api, ApiError } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
 import type { TradePlan } from "./PlanZones";
-import type { PaperAccount, PositionSize, SymbolInfo } from "./types";
+import type { OddsRow, PaperAccount, PositionSize, SymbolInfo, TargetOdds } from "./types";
 
 const SETTINGS_KEY = "gt.plan.v1";
 type Mode = "" | "cash" | "cfd";
@@ -157,6 +157,11 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
           {out.capped && <p className="warn caution">{out.note}</p>}
           {symbol.asset_class === "ukstock" && <p className="muted small-text">Prices in pence. Many UK platforms only sell whole shares: round down.</p>}
         </div>
+      )}
+
+      {!cashShort && plan.entry !== plan.stop && (
+        <OddsBox symbol={symbol} timeframe={timeframe} plan={plan} mode={mode} precision={p}
+          onUseTarget={(price) => onPlanChange({ ...plan, target: Number(price.toFixed(p)) })} onAuthError={onAuthError} />
       )}
 
       <Checkout
@@ -325,5 +330,101 @@ function PriceInput({ value, precision, onCommit }: { value: number | null; prec
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+  );
+}
+
+export function duration(seconds: number | null): string {
+  if (seconds === null) return "–";
+  const h = seconds / 3600;
+  if (h < 1) return `${Math.max(1, Math.round(seconds / 60))} min`;
+  if (h < 36) return `${h < 10 ? h.toFixed(1) : Math.round(h)} hours`;
+  const d = h / 24;
+  if (d < 14) return `${d < 10 ? d.toFixed(1) : Math.round(d)} days`;
+  return `${(d / 7).toFixed(1)} weeks`;
+}
+
+/** How often, and how fast, the price has reached targets like this before the stop. History, not a forecast. */
+function OddsBox({ symbol, timeframe, plan, mode, precision, onUseTarget, onAuthError }: {
+  symbol: SymbolInfo; timeframe: string; plan: TradePlan; mode: string; precision: number;
+  onUseTarget: (price: number) => void; onAuthError: (err: unknown) => void;
+}) {
+  const [odds, setOdds] = useState<TargetOdds | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      api
+        .targetOdds({ symbol: symbol.code, timeframe, entry: plan.entry, stop: plan.stop, target: plan.target, mode })
+        .then((o) => { setOdds(o); setError(null); })
+        .catch((err) => {
+          if (err instanceof ApiError && err.status === 401) onAuthError(err);
+          setError(err instanceof Error ? err.message : "Couldn't work out the odds.");
+        });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [symbol.code, timeframe, plan.entry, plan.stop, plan.target, mode, onAuthError]);
+
+  if (error) return <div className="odds"><h3>How realistic is this target?</h3><p className="muted small-text">{error}</p></div>;
+  if (!odds) return <div className="odds"><h3>How realistic is this target?</h3><p className="muted small-text">Checking history…</p></div>;
+
+  const c = odds.current;
+  const r = (x: number) => `${x > 0 ? "+" : ""}${x.toFixed(2)}R`;
+  const better = odds.best && (!c || odds.best.netR > c.netR + 0.005) ? odds.best : null;
+  const isCurrent = (row: OddsRow) => c !== null && row.r === c.r;
+  const rows = showAll ? odds.ladder : odds.ladder.filter((row) => [0.75, 1, 1.5, 2, 3].includes(row.r) || isCurrent(row) || row.r === odds.best.r);
+
+  return (
+    <div className="odds">
+      <h3>How realistic is this target?</h3>
+      {odds.sample && <p className="warn stop">Sample data: these odds mean nothing yet.</p>}
+      {c ? (
+        <>
+          <p className="big">
+            Reached before the stop in <b>{c.targetPct.toFixed(0)}%</b> of {odds.starts.toLocaleString("en-GB")} past cases,
+            {c.medianSeconds !== null ? <> typically in <b>{duration(c.medianSeconds)}</b></> : null}.
+          </p>
+          <p className="muted small-text">
+            {c.p25Seconds !== null && c.p75Seconds !== null && <>Half took between {duration(c.p25Seconds)} and {duration(c.p75Seconds)}. </>}
+            Stop hit first {c.stopPct.toFixed(0)}%{c.neitherPct >= 1 ? `; neither within ${duration(odds.horizonSeconds)} ${c.neitherPct.toFixed(0)}%` : ""}.
+          </p>
+          <p className={`verdict ${c.viable ? "realistic" : "ambitious"}`}>
+            {c.viable ? "Pays its way" : "Doesn't pay its way"}: averages <b>{r(c.netR)}</b> a trade after costs
+            {c.neitherPct < 1
+              ? <> (it needs to work {c.breakEvenPct.toFixed(0)}% of the time; it did {c.targetPct.toFixed(0)}%).</>
+              : <> (target first {c.targetPct.toFixed(0)}%, stop first {c.stopPct.toFixed(0)}%, the rest went nowhere and count as break-even).</>}
+          </p>
+        </>
+      ) : (
+        <p className="muted small-text">Add a target to see its odds, or pick one from the table.</p>
+      )}
+
+      <table className="odds-table">
+        <thead><tr><th>Target</th><th>Price</th><th className="num">Reached first</th><th className="num">Typical time</th><th className="num">After costs</th><th></th></tr></thead>
+        <tbody>
+          {rows.map((row: OddsRow) => (
+            <tr key={row.r} className={`${isCurrent(row) ? "current" : ""} ${row.viable ? "viable" : ""}`}>
+              <td>{row.r}R</td>
+              <td className="mono">{row.targetPrice.toFixed(precision)}</td>
+              <td className="num">{row.targetPct.toFixed(0)}%</td>
+              <td className="num">{duration(row.medianSeconds)}</td>
+              <td className={`num ${row.netR > 0 ? "up" : "down"}`}>{r(row.netR)}</td>
+              <td>{!isCurrent(row) && <button type="button" className="link-button" onClick={() => onUseTarget(row.targetPrice)}>Use</button>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="planner-actions">
+        {better && <button type="button" className="ghost small" onClick={() => onUseTarget(better.targetPrice)}>Use the best level here ({better.r}R, {r(better.netR)})</button>}
+        <button type="button" className="link-button" onClick={() => setShowAll((s) => !s)}>{showAll ? "Fewer levels" : "All levels"}</button>
+      </div>
+      {!odds.anyViable && (
+        <p className="note">No target paid its way for a random entry here after costs, so any edge has to come from the setup itself. Check the strategy's backtest before relying on it.</p>
+      )}
+      <p className="muted small-text">
+        From every past {odds.timeframe} candle over {odds.years} years: entering at the close with your stop ({odds.stopAtr}× the typical candle range) and each target,
+        which was touched first, and how long it took. This is how random entries fared. It's history, not a forecast.
+      </p>
+    </div>
   );
 }

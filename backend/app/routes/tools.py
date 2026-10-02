@@ -107,3 +107,24 @@ def quote(symbol: str = Query(max_length=32), db: Session = Depends(get_session)
         "suggestedStopLong": float(last.close - 2 * daily_atr) if ok else None,
         "suggestedStopShort": float(last.close + 2 * daily_atr) if ok else None,
     }
+
+
+class OddsBody(BaseModel):
+    symbol: str = Field(max_length=32)
+    timeframe: str = Field("1h", max_length=4)
+    entry: float = Field(gt=0)
+    stop: float = Field(gt=0)
+    target: float | None = Field(None, gt=0)
+    mode: str = Field("", max_length=8)
+
+
+@router.post("/target-odds")
+def target_odds(body: OddsBody, db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    from ..odds import target_odds as compute
+
+    try:
+        return compute(db, body.symbol, body.timeframe, body.entry, body.stop, body.target, body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

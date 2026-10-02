@@ -396,3 +396,39 @@ export interface PaperOrder {
   mood: string;
   confirmed: boolean;
 }
+
+// --- Target odds ---
+
+export interface OddsRow {
+  r: number;
+  targetPrice: number;
+  targetPct: number;
+  stopPct: number;
+  neitherPct: number;
+  medianSeconds: number | null;
+  p25Seconds: number | null;
+  p75Seconds: number | null;
+  grossR: number;
+  netR: number;
+  viable: boolean;
+  breakEvenPct: number;
+}
+
+export interface TargetOdds {
+  symbol: SymbolInfo;
+  timeframe: string;
+  side: "long" | "short";
+  starts: number;
+  horizonCandles: number;
+  horizonSeconds: number;
+  years: number;
+  sample: boolean;
+  stopAtr: number;
+  costR: number;
+  planR: number | null;
+  current: OddsRow | null;
+  ladder: OddsRow[];
+  best: OddsRow;
+  anyViable: boolean;
+  largestViable: OddsRow | null;
+}

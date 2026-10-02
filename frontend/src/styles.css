@@ -266,6 +266,18 @@ table.trades tr.clickable:hover td { background: var(--surface-2); }
 .k.stop { color: var(--down); }
 .k.target { color: var(--accent); }
 
+/* Target odds */
+.odds { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
+.odds h3 { margin: 0; font-size: 14px; }
+.odds .big { margin: 0; font-size: 14px; line-height: 1.45; }
+.odds .small-text { margin: 0; }
+.odds-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.odds-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px; }
+.odds-table td { padding: 4px; border-top: 1px solid var(--line); }
+.odds-table .num { text-align: right; font-family: var(--mono); }
+.odds-table tr.current td { background: var(--surface-2); font-weight: 600; }
+.odds-table tr.viable td:first-child::after { content: " ✓"; color: var(--accent); }
+
 /* Pre-trade checklist */
 .checkout { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
 .checkout h3 { margin: 0; font-size: 14px; }
