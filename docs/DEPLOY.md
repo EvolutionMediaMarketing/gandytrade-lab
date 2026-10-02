@@ -147,3 +147,7 @@ Stop the app:
 cd /home/gandytradeco/gandytrade-lab
 bash deploy/scripts/as-app-user.sh systemctl --user stop gandytrade-app gandytrade-db
 ```
+
+## Backups
+
+Nightly backups (test-restored, encrypted, and copied to a Backblaze B2 bucket) are set up and restored as described in [BACKUPS.md](BACKUPS.md).

@@ -63,7 +63,15 @@ for f in "$REPO"/deploy/quadlet/*; do
       -e "s#__APP_LIMITS__#$APP_LIMITS#g" -e "s#__DB_LIMITS__#$DB_LIMITS#g" \
       -e "s#__WORKER_LIMITS__#$WORKER_LIMITS#g" "$f" > "$UNITS/$(basename "$f")"
 done
+# The nightly backup timer (a plain user service, not a container).
+SYSD="$HOME/.config/systemd/user"
+mkdir -p "$SYSD"
+for f in "$REPO"/deploy/systemd/*; do
+  sed -e "s#__REPO__#$REPO#g" "$f" > "$SYSD/$(basename "$f")"
+done
 systemctl --user daemon-reload
+systemctl --user enable --now gandytrade-backup.timer >/dev/null 2>&1 \
+  && ok "Nightly backup scheduled" || warn "Couldn't schedule the nightly backup"
 systemctl --user restart gandytrade-db.service
 systemctl --user restart gandytrade-app.service
 

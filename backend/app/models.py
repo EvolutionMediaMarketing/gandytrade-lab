@@ -255,3 +255,18 @@ class ResearchJob(Base):
     message: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BackupRun(Base):
+    """One nightly backup: made, test-restored, and (when set up) encrypted and copied off the server."""
+
+    __tablename__ = "backup_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ok: Mapped[bool] = mapped_column(default=False)  # made, checked and (if set up) uploaded
+    name: Mapped[str] = mapped_column(String(160), default="")
+    size: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes, encrypted
+    restore_tested: Mapped[bool] = mapped_column(default=False)
+    uploaded: Mapped[bool] = mapped_column(default=False)
+    detail: Mapped[str] = mapped_column(String(255), default="")

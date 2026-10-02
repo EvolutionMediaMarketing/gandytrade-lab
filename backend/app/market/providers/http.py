@@ -6,6 +6,8 @@ deliberate, reviewed change; the live trading gateway (Phase 6) will have its
 own separate client, in its own container, on its own server.
 """
 
+import re
+
 import httpx
 
 ALLOWED_HOSTS = frozenset({
@@ -16,12 +18,21 @@ ALLOWED_HOSTS = frozenset({
 })
 
 
+# Off-server backups: Backblaze B2's S3-compatible endpoints, one per storage region
+# (e.g. s3.eu-central-003.backblazeb2.com). Uploads only; the key used can't read or delete.
+ALLOWED_HOST_PATTERNS = (re.compile(r"^s3\.[a-z]{2}-[a-z]+-\d{3}\.backblazeb2\.com$"),)
+
+
+def host_allowed(host: str) -> bool:
+    return host in ALLOWED_HOSTS or any(p.match(host) for p in ALLOWED_HOST_PATTERNS)
+
+
 class BlockedHost(httpx.HTTPError):
     pass
 
 
 def check_request(request: httpx.Request) -> None:
-    if request.url.scheme != "https" or request.url.host not in ALLOWED_HOSTS:
+    if request.url.scheme != "https" or not host_allowed(request.url.host):
         raise BlockedHost(f"Outbound request to {request.url.scheme}://{request.url.host} is not allowed.")
 
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
-import type { PaperAccount } from "./types";
+import type { BackupStatus, PaperAccount } from "./types";
 
 interface Rule {
   key: "risk_pct" | "max_open_risk_pct" | "daily_loss_pct" | "max_drawdown_pct";
@@ -46,6 +46,7 @@ export default function SettingsPage({ onAuthError }: { onAuthError: (err: unkno
         <p className="muted">Risk safeguards for each paper account. They apply to every trade, by hand or automatic. Each has a safe range it can't go beyond.</p>
       </section>
       {accounts.filter((a) => !a.archived).map((a) => <AccountSettings key={a.id} account={a} onSaved={load} onAuthError={onAuthError} />)}
+      <Backups onAuthError={onAuthError} />
       {accounts.some((a) => a.archived) && (
         <section className="card">
           <h3>Archived accounts</h3>
@@ -121,6 +122,49 @@ function AccountSettings({ account, onSaved, onAuthError }: { account: PaperAcco
           }
         }}>Archive account</button>
       </div>
+    </section>
+  );
+}
+
+const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function Backups({ onAuthError }: { onAuthError: (err: unknown) => void }) {
+  const [status, setStatus] = useState<BackupStatus | null>(null);
+  useEffect(() => { api.backupStatus().then(setStatus).catch(onAuthError); }, [onAuthError]);
+  if (!status) return null;
+  const last = status.runs[0];
+  return (
+    <section className="card backups">
+      <h3>Backups</h3>
+      <p className="muted small-text">
+        Every night the database is copied, test-restored into a scratch database to prove it works{status.offServer ? ", then encrypted and copied to your Backblaze bucket" : ""}.
+        The last 14 nightly copies are also kept on the server.
+      </p>
+      {!status.offServer && (
+        <p className="warn caution">Off-server copies aren't set up yet, so a server failure would lose your data. See docs/BACKUPS.md.</p>
+      )}
+      {status.overdue && <p className="warn stop">No backup has worked for over two days. The latest problem is shown below.</p>}
+      {!last ? <p className="muted">No backups have run yet. The first runs tonight, in the early hours (about 02:30 to 03:30 UK time).</p> : (
+        <>
+          <p>{status.lastOk ? <>Last good backup: <b>{when(status.lastOk)}</b></> : "No backup has worked yet."}</p>
+          <div className="table-wrap">
+            <table className="trades">
+              <thead><tr><th>When</th><th>Result</th><th>Restore test</th><th>Off server</th><th>Details</th></tr></thead>
+              <tbody>
+                {status.runs.map((r, i) => (
+                  <tr key={i}>
+                    <td>{when(r.at)}</td>
+                    <td className={r.ok ? "up" : "down"}>{r.ok ? "OK" : "Failed"}</td>
+                    <td>{r.restoreTested ? "Passed" : "–"}</td>
+                    <td>{r.uploaded ? `Yes (${(r.size / 1024).toFixed(0)} KB, encrypted)` : "No"}</td>
+                    <td className="muted small-text">{r.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </section>
   );
 }

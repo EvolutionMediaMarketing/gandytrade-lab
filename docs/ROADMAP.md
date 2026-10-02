@@ -157,7 +157,7 @@ Phase 5 adds a coach you can talk to about your own trading, the bar a strategy 
 
 Before the launch version is called finished, your data must be backed up off the server and the setup checked once more.
 
-- [ ] **Nightly backups:** the database is copied every night inside the `gandytradeco` account and sent to a free off-server location (to be chosen); 30 days are kept
+- [x] **Nightly backups:** the database is copied every night, test-restored into a scratch database, encrypted and sent to a Backblaze B2 bucket with a write-only key; about 30 days are kept (see `docs/BACKUPS.md`)
 - [ ] **Restore test:** a backup is restored into a spare database and checked, so backups are known to work
 - [ ] **Database upgrades:** a migration tool is added so future versions update the database without losing data
 - [ ] **Health monitor:** a free uptime check emails you if the site stops responding

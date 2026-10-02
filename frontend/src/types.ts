@@ -550,3 +550,10 @@ export interface ResearchOptions {
   minTrades: number;
   maxDrawdownPct: number;
 }
+
+export interface BackupStatus {
+  offServer: boolean;
+  overdue: boolean;
+  lastOk: string | null;
+  runs: { at: string; ok: boolean; name: string; size: number; restoreTested: boolean; uploaded: boolean; detail: string }[];
+}

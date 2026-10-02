@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AutoOptions, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AutoOptions, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -107,5 +107,6 @@ export const api = {
   researchJob: (id: number, background = false) => request<ResearchJob>(`/api/research/${id}`, {}, background),
   startResearch: (body: { markets: string[]; timeframes: string[] }) =>
     request<ResearchJob>("/api/research", { method: "POST", body: JSON.stringify(body) }),
+  backupStatus: (background = false) => request<BackupStatus>("/api/backup/status", {}, background),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

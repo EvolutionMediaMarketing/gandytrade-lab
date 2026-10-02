@@ -87,6 +87,10 @@ function pageFromHash(): Page {
 
 export default function Workspace({ username, onSignedOut }: { username: string; onSignedOut: () => void }) {
   const [page, setPage] = useState<Page>(pageFromHash);
+  const [backupOverdue, setBackupOverdue] = useState(false);
+  useEffect(() => {
+    api.backupStatus(true).then((b) => setBackupOverdue(b.overdue)).catch(() => {});
+  }, [page]);
   const [autoPrefill, setAutoPrefill] = useState<AutoPrefill | null>(null);
   const [backtestInit, setBacktestInit] = useState<BacktestInit | undefined>();
 
@@ -286,6 +290,11 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <button className="ghost" onClick={signOut}>Sign out</button>
       </header>
 
+      {backupOverdue && (
+        <div className="banner error" role="alert">
+          Backups haven't worked for over two days. <a href="#/settings" onClick={(e) => { e.preventDefault(); go("settings"); }}>See Settings</a>.
+        </div>
+      )}
       {page === "backtest" && (
         <BacktestPage key={JSON.stringify(backtestInit ?? {})} catalogue={catalogue} favourites={favourites}
           onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit}

@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     # London shares (daily/weekly/monthly) from Alpha Vantage's free plan.
     alphavantage_key: str = ""
 
+    # Off-server backups to a Backblaze B2 bucket (S3-compatible endpoint, e.g. s3.eu-central-003.backblazeb2.com).
+    # The key should be limited to that one bucket, with write-only access. Backups are encrypted with the
+    # passphrase before they leave the server; without the passphrase they can't be restored, so keep a copy.
+    backup_endpoint: str = ""
+    backup_bucket: str = ""
+    backup_key_id: str = ""
+    backup_key: str = ""
+    backup_passphrase: str = ""
+
     # Where the built frontend lives inside the container.
     frontend_dir: str = "/app/frontend"
 

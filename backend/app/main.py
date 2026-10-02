@@ -12,7 +12,7 @@ from . import __version__
 from .config import get_settings
 from .db import init_db, wait_for_database
 from .logsafe import install_log_redaction
-from .routes import auth, backtests, favourites, live, market, paper, research, signals, tools
+from .routes import auth, backtests, backup, favourites, live, market, paper, research, signals, tools
 
 SECURITY_HEADERS = {
     "X-Robots-Tag": "noindex, nofollow, noarchive",
@@ -92,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(paper.router)
     app.include_router(live.router)
     app.include_router(research.router)
+    app.include_router(backup.router)
 
     @app.get("/api/health")
     def health() -> dict:
