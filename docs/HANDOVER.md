@@ -48,12 +48,25 @@ has the full plan and `CLAUDE.md` the hard rules.
 
 Conclusions: buys only; slower breakouts beat costs; 1% risk; 20% limit treated as a pause to review, not an ending;
 holding beat trading on return but with much deeper falls. A **55/20 daily basket** was started on paper on 5 October
-2026 (account "20-day breakout (55/20) basket 1d", 6 automatic runs). Judge it after 6–12 months against the backtest
-(about 37% winners, +0.6R average, losing runs up to 9). Monte Carlo figures for it not yet looked at.
+2026 (account "20-day breakout (55/20) basket 1d", 6 automatic runs).
+
+**Monte Carlo for the 55/20 basket** (5 Oct 2026; all history, kept going past the limit, £200, 1% risk, 241 trades,
+2,000 reshuffles): typical worst fall 15%, 1 in 20 25%, 1 in 100 30%; middle result +264% (9 in 10 between +66% and
++743%); 0% ended below the start; 20% limit reached in 15%; losing runs 10 typical, 15+ in 1 in 20. The backtest's own
+order was on the unlucky side (only 5% of reshuffles fell further), so the result doesn't depend on lucky ordering.
+Caveat: the reshuffle replays trades one at a time, but the basket holds several at once and they often fall together,
+so real falls run deeper (backtest 28.5% vs 24% replayed). Treat about 30% as the realistic bad case.
+It does not test whether 55/20 was picked to fit this history (walk-forward check does that).
+
+**Judging the paper basket:** about 13 trades a year, so 6–12 months is far too few to judge on results. Expect about 37%
+winners. Losing runs up to about 15 and falls up to about 25–30% are within normal. A 20% pause is plausible:
+review, don't abandon. Look again at about 40 trades (around 3 years). Worry if average R is at or below zero by then,
+if a losing run passes 15–16, or if a fall goes well past 30%. Before that, check only that trades match the backtest's
+rules and costs (fills, spreads, stops).
 
 ## Next steps (user's choice)
 
-1. Rerun the 55/20 basket backtest to read its Monte Carlo card.
+1. ~~Rerun the 55/20 basket backtest to read its Monte Carlo card~~ (done 5 Oct, figures above).
 2. Phase 3 remaining: monthly top-ups for paper accounts; the 12-week learning path.
 3. Phase 4: walk-forward check and robustness verdict; economic calendar (source to choose); market replay; strategy builder.
 4. Before launch: health monitor, security review.
