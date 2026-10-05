@@ -56,8 +56,8 @@ export function WalkForwardResult({ r, running, onRerun }: {
       <h3>Walk-forward check and verdict <span className="muted small-text">— does it work on years it wasn't tuned on?</span></h3>
       {r.warnings.length > 0 && <ul className="warnings">{r.warnings.map((w, i) => <li key={i} className={`warn ${w.level}`}>{w.text}</li>)}</ul>}
 
-      <div className={`verdict ${r.verdict.key}`}>
-        <span className="verdict-label">{r.verdict.label}</span>
+      <div className={`wf-verdict ${r.verdict.key}`}>
+        <span className="wf-verdict-label">{r.verdict.label}</span>
         <div>
           <p>{r.verdict.text}</p>
           <p className="muted small-text">{r.verdict.passed} of {r.verdict.total} checks passed. Evidence about the past, not a forecast or advice to trade.</p>
@@ -66,9 +66,9 @@ export function WalkForwardResult({ r, running, onRerun }: {
 
       <p className="headline">{r.headline}</p>
 
-      <ul className="checks">
+      <ul className="wf-checks">
         {r.checks.map((c) => (
-          <li key={c.key} className={c.status}>
+          <li key={c.key} className={`is-${c.status}`}>
             <span className="check-mark" aria-label={c.status}>{MARK[c.status]}</span>
             <span><b>{c.label}.</b> <span className="muted">{c.detail}</span></span>
           </li>
