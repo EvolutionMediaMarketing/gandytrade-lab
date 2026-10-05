@@ -127,6 +127,8 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
     }
   }, [strategy, form.timeframe]);
 
+  const [keepGoing, setKeepGoing] = useState(false);
+
   const run = useCallback(() => {
     if (!strategy) return;
     setRunning(true);
@@ -134,7 +136,7 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
     const body: BacktestRequest = {
       symbol: form.symbol, timeframe: form.timeframe, strategy: form.strategy, params, start_balance: form.start_balance,
       risk_pct: form.risk_pct, mode, direction: form.direction, years: form.years, daily_loss_pct: form.daily_loss_pct,
-      max_drawdown_pct: form.max_drawdown_pct, costs: form.costs,
+      max_drawdown_pct: form.max_drawdown_pct, costs: form.costs, keep_going: keepGoing,
     };
     api
       .runBacktest(body)
@@ -148,7 +150,7 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
         setError(err instanceof Error ? err.message : "The backtest failed.");
       })
       .finally(() => setRunning(false));
-  }, [form, mode, params, strategy, onAuthError]);
+  }, [form, mode, params, strategy, onAuthError, keepGoing]);
 
   // Price chart for the result, with every trade marked on it.
   useEffect(() => {
@@ -284,6 +286,12 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
             ))}
           </div>
         </div>
+        <label className="check-row" title="Tests only. Paper and live accounts always stop at the drawdown limit.">
+          <input type="checkbox" checked={keepGoing} onChange={(e) => setKeepGoing(e.target.checked)} />
+          Keep testing past the drawdown limit
+        </label>
+        {keepGoing && <p className="muted small-text">Shows what happened after the account fell to its drawdown limit, which
+          would have stopped trading for real. Paper and live accounts always stop there.</p>}
 
         <button type="button" className="link-button" onClick={() => setShowCosts((s) => !s)} aria-expanded={showCosts}>
           {showCosts ? "▾" : "▸"} Costs and risk limits
@@ -383,7 +391,8 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
 
             <div className="card">
               <h3>Account balance <span className="legend-key strat">Strategy</span> <span className="legend-key bh">Buy and hold</span></h3>
-              <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance} />
+              <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance}
+                limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
 
             <div className="card chart-card">

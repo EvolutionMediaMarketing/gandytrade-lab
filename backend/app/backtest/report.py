@@ -1,5 +1,7 @@
 """Turning a backtest into numbers and honest, plain-English warnings."""
 
+from datetime import datetime, timezone
+
 import numpy as np
 
 from .engine import Result
@@ -81,6 +83,12 @@ def headline(name: str, m: dict, bh: dict) -> str:
     return text
 
 
+def _month(ts: int) -> str:
+    if ts <= 1:
+        return ""
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%B %Y")
+
+
 def warnings(m: dict, bh: dict | None, result: Result, benchmark: bool) -> list[dict]:
     """Each warning: level (stop | caution | info) and text."""
     out: list[dict] = []
@@ -106,8 +114,19 @@ def warnings(m: dict, bh: dict | None, result: Result, benchmark: bool) -> list[
             "Ask yourself honestly whether you'd have kept going.")})
     if m["longestLosingRun"] >= 8:
         out.append({"level": "info", "text": f"There was a run of {m['longestLosingRun']} losing trades in a row. That's normal for many strategies, but hard to sit through."})
+    when = _month(result.limit_hit_ts)
     if result.halted:
-        out.append({"level": "stop", "text": result.halted})
+        text = (f"Trading stopped{' in ' + when if when else ''}: the account fell {result.limit_pct:g}% from its high "
+                "(the drawdown limit), so no new trades were opened after that.") if result.limit_pct else result.halted
+        if result.wanted_after_stop:
+            text += (f" The rules wanted {result.wanted_after_stop} more trade{'s' if result.wanted_after_stop != 1 else ''}. "
+                     "Tick \"Keep testing past the drawdown limit\" to see how they would have gone.")
+        out.append({"level": "stop", "text": text})
+    elif result.kept_going and result.limit_hit_ts:
+        out.append({"level": "caution", "text": (
+            f"The account fell {result.limit_pct:g}% from its high{' in ' + when if when else ''}. On a paper or live account "
+            "trading would have stopped there; this test kept going to show what happened next. "
+            "The results include everything after that point.")})
     for reason, count in result.skipped.items():
         out.append({"level": "info", "text": f"{reason} ({count}×)."})
     for note in result.notes:

@@ -35,6 +35,7 @@ class Request:
     years: float = 0
     daily_loss_pct: float = 3.0
     max_drawdown_pct: float = 20.0
+    keep_going: bool = False  # keep trading past the drawdown limit (tests only)
 
 
 def run(db: Session, req: Request) -> dict:
@@ -98,14 +99,14 @@ def run(db: Session, req: Request) -> dict:
     names = {s.code: s.name for s, _ in loaded}
 
     result = basket.run(legs, strategy, params, start_balance=start, mode=mode, direction=direction, risk=risk,
-                        max_open_risk_pct=open_limit)
+                        max_open_risk_pct=open_limit, keep_going=bool(req.keep_going))
     m = report.metrics(result, start)
 
     # Each market alone, with the whole balance (the normal backtest).
     alone, holds = [], []
     for leg in legs:
         settings = engine.Settings(start_balance=start, mode=mode, direction=direction, risk=risk,
-                                   leverage=leg.leverage, costs=leg.costs)
+                                   leverage=leg.leverage, costs=leg.costs, keep_going=bool(req.keep_going))
         res = engine.run(leg.bars, strategy, params, settings, leg.conv)
         am = report.metrics(res, start)
         bh_settings = engine.Settings(start_balance=start, mode="cash", leverage=1.0,
@@ -146,7 +147,8 @@ def run(db: Session, req: Request) -> dict:
     return {
         "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
         "timeframe": tf.code, "mode": mode, "direction": direction, "startBalance": start,
-        "maxOpenRiskPct": open_limit, "riskPct": risk.risk_pct,
+        "maxOpenRiskPct": open_limit, "riskPct": risk.risk_pct, "keptGoing": bool(req.keep_going),
+        "limitHit": result.limit_hit_ts if result.limit_hit_ts > 1 else None,
         "from": result.timeline[0], "to": result.timeline[-1], "years": round(span, 1),
         "markets": alone, "metrics": m, "buyHold": hm, "averageAloneReturnPct": round(avg_alone, 2),
         "headline": headline, "warnings": warnings, "skipped": result.skipped,

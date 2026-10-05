@@ -31,6 +31,7 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   const [risk, setRisk] = useState(1);
   const [openRisk, setOpenRisk] = useState(10);
   const [years, setYears] = useState(0);
+  const [keepGoing, setKeepGoing] = useState(false);
   const [result, setResult] = useState<BasketResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   function run() {
     setRunning(true);
     setError(null);
-    api.runBasket({ markets, timeframe, strategy, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd" })
+    api.runBasket({ markets, timeframe, strategy, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing })
       .then(setResult)
       .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "The basket test didn't run."); })
       .finally(() => setRunning(false));
@@ -104,6 +105,12 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
           </div>
           <span className="muted small-text">Only the period every market has prices for is used.</span>
         </div>
+        <label className="check-row" title="Tests only. Paper and live accounts always stop at the drawdown limit.">
+          <input type="checkbox" checked={keepGoing} onChange={(e) => setKeepGoing(e.target.checked)} />
+          Keep testing past the drawdown limit
+        </label>
+        {keepGoing && <p className="muted small-text">Shows what happened after the account fell to its drawdown limit, which
+          would have stopped trading for real. Paper and live accounts always stop there.</p>}
         {error && <p className="form-error">{error}</p>}
         <button type="button" className="primary" disabled={running || markets.length < 2} onClick={run}>{running ? "Running…" : "Run basket backtest"}</button>
       </aside>
@@ -144,7 +151,8 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
             </div>
             <div className="card">
               <h3>Account balance <span className="muted small-text">— basket · grey: holding the basket</span></h3>
-              <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance} label="Basket" />
+              <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance} label="Basket"
+              limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
             <div className="card">
               <h3>Each market</h3>

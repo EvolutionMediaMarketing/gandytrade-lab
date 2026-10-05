@@ -42,6 +42,7 @@ class BacktestBody(BaseModel):
     years: float = Field(0, ge=0, le=50)
     daily_loss_pct: float = Field(3.0, ge=0.5, le=20)
     max_drawdown_pct: float = Field(20.0, ge=2, le=60)
+    keep_going: bool = False
     costs: dict[str, float] = Field(default_factory=dict)
 
 
@@ -58,6 +59,7 @@ class BasketBody(BaseModel):
     years: float = Field(0, ge=0, le=50)
     daily_loss_pct: float = Field(3.0, ge=0.5, le=20)
     max_drawdown_pct: float = Field(20.0, ge=2, le=60)
+    keep_going: bool = False
 
 
 @router.post("/backtests/basket")

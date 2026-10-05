@@ -179,6 +179,8 @@ export interface BacktestResult {
   timeframe: string;
   strategy: { key: string; name: string; params: Record<string, number> };
   startBalance: number;
+  keptGoing?: boolean;
+  limitHit?: number | null;
   from: number;
   to: number;
   candles: number;
@@ -236,6 +238,7 @@ export interface BacktestRequest {
   daily_loss_pct: number;
   max_drawdown_pct: number;
   costs: Partial<CostSettings>;
+  keep_going?: boolean;
 }
 
 export interface Quote {
@@ -638,6 +641,7 @@ export interface BasketInit {
 export interface BasketResult {
   strategy: { key: string; name: string; params: Record<string, number> };
   timeframe: string; mode: string; direction: string; startBalance: number; maxOpenRiskPct: number; riskPct: number;
+  keptGoing: boolean; limitHit: number | null;
   from: number; to: number; years: number;
   markets: { market: string; name: string; basketTrades: number; basketNet: number; basketWinRate: number | null; basketAvgR: number | null;
              aloneReturnPct: number; aloneTrades: number; aloneDrawdownPct: number; holdReturnPct: number }[];

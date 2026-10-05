@@ -122,7 +122,7 @@ export const api = {
     request<WeeklyReview>(`/api/reviews/${week}`, { method: "PUT", body: JSON.stringify(body) }),
   reviewCoach: (week: string) => request<{ text: string }>(`/api/reviews/${week}/coach`),
   runBasket: (body: { markets: string[]; timeframe: string; strategy: string; direction: string; start_balance: number;
-    risk_pct: number; max_open_risk_pct: number; years: number; mode: string }) =>
+    risk_pct: number; max_open_risk_pct: number; years: number; mode: string; keep_going: boolean }) =>
     request<BasketResult>("/api/backtests/basket", { method: "POST", body: JSON.stringify(body) }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

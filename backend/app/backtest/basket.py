@@ -53,7 +53,8 @@ class BasketResult(Result):
 
 
 def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: float, mode: str, direction: str,
-        risk: RiskSettings, max_open_risk_pct: float = 10.0, market_spreads: bool = True) -> BasketResult:
+        risk: RiskSettings, max_open_risk_pct: float = 10.0, market_spreads: bool = True,
+        keep_going: bool = False) -> BasketResult:
     risk = risk.cleaned()
     allow_short_mode = direction == "both" and mode == "cfd"
 
@@ -80,7 +81,8 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
 
     timeline = sorted({t for leg in legs for t in leg.index})
     cash = start_balance
-    limits = AccountLimits(risk, peak=cash)
+    limits = AccountLimits(risk, peak=cash, keep_going=keep_going)
+    after_stop = 0
     equity: list[tuple[int, float]] = []
     skipped: dict[str, int] = {}
     all_trades: list[Trade] = []
@@ -131,7 +133,7 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
 
     for g, ts in enumerate(timeline):
         day = _day(ts)
-        limits.new_candle(day, equity[-1][1] if equity else cash)
+        limits.new_candle(day, equity[-1][1] if equity else cash, ts)
         active = [st for st in state if ts in st["leg"].index]
 
         # 1. At the open: exits everywhere first...
@@ -147,6 +149,7 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
             if pending is None or st["pos"] is not None:
                 continue
             if limits.halted:
+                after_stop += 1
                 continue
             side, stop, target = pending
             book, conv, o = st["book"], st["leg"].conv, st["o"][i]
@@ -222,7 +225,7 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
         # 3. At the close: value the account, then each market's rules decide.
         eq = cash + sum(unrealised(st, ts) for st in state)
         equity.append((ts, eq))
-        limits.new_candle(day, eq)
+        limits.new_candle(day, eq, ts)
         for st in active:
             i = st["leg"].index[ts]
             pos, sides = st["pos"], st["sides"]
@@ -234,6 +237,9 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
             else:
                 wanted = [s for s, _ in sides if st["entries"][s][i]]
             if len(wanted) != 1:
+                continue
+            if limits.halted:
+                after_stop += 1
                 continue
             block = limits.entry_block()
             if block:
@@ -254,6 +260,8 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
 
     all_trades.sort(key=lambda t: (t.exit_ts, t.entry_ts))
     return BasketResult(all_trades, equity, limits.halt_reason if limits.halted else "", skipped, [],
+                        limit_hit_ts=limits.limit_hit_ts, limit_pct=risk.max_drawdown_pct, kept_going=keep_going,
+                        wanted_after_stop=after_stop,
                         by_market={st["leg"].code: st["leg"].trades for st in state}, timeline=timeline)
 
 

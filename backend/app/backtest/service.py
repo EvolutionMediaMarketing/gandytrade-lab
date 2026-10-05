@@ -31,6 +31,7 @@ class Request:
     daily_loss_pct: float = 3.0
     max_drawdown_pct: float = 20.0
     costs: dict = field(default_factory=dict)
+    keep_going: bool = False  # keep trading past the drawdown limit (tests only)
 
 
 def default_mode(asset_class: str) -> str:
@@ -71,6 +72,7 @@ def run(db: Session, req: Request) -> dict:
     settings = engine.Settings(
         start_balance=start, mode=mode, direction=direction if mode == "cfd" else "long", risk=risk,
         leverage=leverage_cap(symbol.code, symbol.asset_class, mode), costs=costs, market_spreads=not own_spread,
+        keep_going=bool(req.keep_going),
     )
 
     # The yardstick is plain buy and hold: no leverage, no overnight financing.
@@ -137,6 +139,8 @@ def run(db: Session, req: Request) -> dict:
         "timeframe": tf.code,
         "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
         "startBalance": start,
+        "keptGoing": bool(req.keep_going),
+        "limitHit": result.limit_hit_ts if result.limit_hit_ts > 1 else None,
         "from": bars[0].ts,
         "to": bars[-1].ts,
         "candles": len(bars),

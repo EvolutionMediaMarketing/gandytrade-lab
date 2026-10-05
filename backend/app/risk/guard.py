@@ -97,15 +97,21 @@ class AccountLimits:
     day_realised: float = 0.0
     halted: bool = False
     halt_reason: str = ""
+    # Backtests only: note when the drawdown limit is reached but keep trading, to show what happened next.
+    # Paper and live accounts always stop.
+    keep_going: bool = False
+    limit_hit_ts: int = 0  # when the drawdown limit was first reached (0 = never)
 
-    def new_candle(self, day: str, equity: float) -> None:
+    def new_candle(self, day: str, equity: float, ts: int = 0) -> None:
         if day != self.day:
             self.day, self.day_start_equity, self.day_realised = day, equity, 0.0
         self.peak = max(self.peak, equity)
-        if not self.halted and self.peak > 0 and (self.peak - equity) / self.peak * 100 >= self.settings.max_drawdown_pct:
-            self.halted = True
-            self.halt_reason = (f"Trading stopped: the account fell {self.settings.max_drawdown_pct:g}% from its high, "
-                                "the drawdown limit.")
+        if not self.limit_hit_ts and self.peak > 0 and (self.peak - equity) / self.peak * 100 >= self.settings.max_drawdown_pct:
+            self.limit_hit_ts = ts or 1
+            if not self.keep_going:
+                self.halted = True
+                self.halt_reason = (f"Trading stopped: the account fell {self.settings.max_drawdown_pct:g}% from its high, "
+                                    "the drawdown limit.")
 
     def record(self, realised_gbp: float) -> None:
         self.day_realised += realised_gbp

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ColorType, LineSeries, Time, TickMarkType, createChart } from "lightweight-charts";
+import { ColorType, LineSeries, Time, TickMarkType, createChart, createSeriesMarkers } from "lightweight-charts";
 
 interface Point {
   time: number;
@@ -16,7 +16,11 @@ function tick(seconds: number, type: TickMarkType): string {
 }
 
 /** The account balance over time: the strategy against simply buying and holding. */
-export default function EquityChart({ strategy, buyHold = [], start, label = "Strategy" }: { strategy: Point[]; buyHold?: Point[]; start: number; label?: string }) {
+export default function EquityChart({ strategy, buyHold = [], start, label = "Strategy", limitHit = null, keptGoing = false }: {
+  strategy: Point[]; buyHold?: Point[]; start: number; label?: string;
+  /** When the drawdown limit was reached (Unix seconds), marked on the line. */
+  limitHit?: number | null; keptGoing?: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,9 +44,14 @@ export default function EquityChart({ strategy, buyHold = [], start, label = "St
     const st = chart.addSeries(LineSeries, { color: "#34d399", lineWidth: 2, priceLineVisible: false, title: label });
     st.setData(strategy.map((p) => ({ time: p.time as Time, value: p.value })));
     st.createPriceLine({ price: start, color: "#3b4b5c", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "Start" });
+    const at = limitHit ? strategy.find((p) => p.time >= limitHit) : undefined;
+    if (at) {
+      createSeriesMarkers(st, [{ time: at.time as Time, position: "aboveBar", color: "#f87171", shape: "arrowDown",
+        text: keptGoing ? "Limit reached" : "Trading stopped" }]);
+    }
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [strategy, buyHold, start, label]);
+  }, [strategy, buyHold, start, label, limitHit, keptGoing]);
 
   return <div ref={host} className="equity-host" role="img" aria-label="Account balance over time, strategy versus buy and hold" />;
 }

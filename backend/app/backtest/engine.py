@@ -39,6 +39,7 @@ class Settings:
     leverage: float = 1.0
     costs: Costs = field(default_factory=lambda: Costs(0, 0))
     market_spreads: bool = True  # use recorded spreads where the data has them (off when you set your own)
+    keep_going: bool = False  # keep trading past the drawdown limit (tests only), to see what happened next
 
 
 @dataclass
@@ -84,6 +85,10 @@ class Result:
     notes: list[str] = field(default_factory=list)
     pending_exit: str = ""  # an exit rule met on the last candle (it would fill at the next open)
     pending_entry: int = 0  # +1 / -1 if an entry was decided on the last candle
+    limit_hit_ts: int = 0  # when the drawdown limit was first reached (0 = never)
+    limit_pct: float = 0.0  # the drawdown limit used
+    kept_going: bool = False  # the test traded on past the limit
+    wanted_after_stop: int = 0  # trades the rules wanted after trading stopped
 
 
 def _day(ts: int) -> str:
@@ -155,7 +160,8 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
     sp = df["spread"].to_numpy(dtype=float)
 
     cash = settings.start_balance
-    limits = AccountLimits(risk, peak=cash)
+    limits = AccountLimits(risk, peak=cash, keep_going=settings.keep_going)
+    after_stop = 0
     trades: list[Trade] = []
     equity: list[tuple[int, float]] = []
     skipped: dict[str, int] = {}
@@ -186,7 +192,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         return cash + unreal - book.financing(pos, ts[i])
 
     for i in range(len(df)):
-        limits.new_candle(_day(int(ts[i])), equity[-1][1] if equity else cash)
+        limits.new_candle(_day(int(ts[i])), equity[-1][1] if equity else cash, int(ts[i]))
 
         # 1. At the open
         if pending_exit and pos is not None:
@@ -194,6 +200,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         pending_exit = ""
         if pending_entry is not None and pos is None and limits.halted:
             pending_entry = None
+            after_stop += 1
         if pending_entry is not None and pos is None:
             side, stop, target = pending_entry
             buying = side > 0
@@ -243,7 +250,7 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         # 3. At the close
         eq = mark(i)
         equity.append((int(ts[i]), eq))
-        limits.new_candle(_day(int(ts[i])), eq)  # a loss on this candle counts before deciding anything new
+        limits.new_candle(_day(int(ts[i])), eq, int(ts[i]))  # a loss on this candle counts before deciding anything new
         if pos is not None:
             if not exits[pos.side][i]:
                 continue
@@ -253,6 +260,9 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         else:
             wanted = [s for s, _ in sides if entries[s][i]]
         if len(wanted) != 1:
+            continue
+        if limits.halted:
+            after_stop += 1
             continue
         block = limits.entry_block()
         if block:
@@ -269,7 +279,8 @@ def run(bars: list[Bar], strategy: Strategy, params: dict, settings: Settings, c
         equity[-1] = (int(ts[last]), cash)
 
     return Result(trades, equity, limits.halt_reason if limits.halted else "", skipped, list(rules.notes),
-                  pending_exit=final_exit, pending_entry=final_entry)
+                  pending_exit=final_exit, pending_entry=final_entry, limit_hit_ts=limits.limit_hit_ts,
+                  limit_pct=risk.max_drawdown_pct, kept_going=settings.keep_going, wanted_after_stop=after_stop)
 
 
 def buy_and_hold(bars: list[Bar], settings: Settings, conv: Converter) -> Result:
