@@ -135,7 +135,9 @@ def run(db: Session, req: Request) -> dict:
         "Buy and hold here is the whole basket: the money split equally between the markets and simply held, "
         "without leverage or financing.")})
     span = (result.timeline[-1] - result.timeline[0]) / (365.25 * 86400) if result.timeline else 0
-    headline = (f"Over {span:.1f} years, {strategy.name} on {len(legs)} markets together turned "
+    tweaked = [f"{p.label.split(' (')[0].lower()} {params[p.key]:g}" for p in strategy.params if params.get(p.key) != p.default]
+    shown_name = strategy.name + (f" ({', '.join(tweaked)})" if tweaked else "")
+    headline = (f"Over {span:.1f} years, {shown_name} on {len(legs)} markets together turned "
                 f"£{start:,.2f} into £{m['final']:,.2f} ({m['returnPct']:+.1f}%) from {m['trades']} trades, after "
                 f"£{m['costs']:,.2f} of costs. Holding the basket gave {hm['returnPct']:+.1f}%; "
                 f"the same markets traded one at a time averaged {avg_alone:+.1f}%.")

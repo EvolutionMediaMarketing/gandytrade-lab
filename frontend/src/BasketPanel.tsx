@@ -32,25 +32,32 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   const [openRisk, setOpenRisk] = useState(10);
   const [years, setYears] = useState(0);
   const [keepGoing, setKeepGoing] = useState(false);
+  const [allParams, setAllParams] = useState<Record<string, Record<string, number>>>({});
   const [result, setResult] = useState<BasketResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { api.strategies().then(setInfo).catch(onAuthError); }, [onAuthError]);
   const chosen = info?.strategies.find((s) => s.key === strategy);
+  const params = allParams[strategy] ?? {};
+  const changed = (chosen?.params ?? []).filter((p) => params[p.key] !== undefined && params[p.key] !== p.default);
   const known = [...(catalogue?.symbols ?? []), ...favourites];
   const nameOf = (code: string) => known.find((s) => s.code === code)?.name ?? "";
 
   function run() {
     setRunning(true);
     setError(null);
-    api.runBasket({ markets, timeframe, strategy, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing })
+    api.runBasket({ markets, timeframe, strategy, params, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing })
       .then(setResult)
       .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "The basket test didn't run."); })
       .finally(() => setRunning(false));
   }
 
   const m = result?.metrics;
+  const resultInfo = info?.strategies.find((s) => s.key === result?.strategy.key);
+  const resultSettings = (resultInfo?.params ?? [])
+    .filter((p) => result && result.strategy.params[p.key] !== undefined && result.strategy.params[p.key] !== p.default)
+    .map((p) => `${p.label} ${result!.strategy.params[p.key]}`);
   return (
     <div className="page backtest">
       <aside className="bt-form" aria-label="Basket settings">
@@ -86,6 +93,30 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
           </select>
         </label>
         {chosen && <p className="muted small-text">{chosen.summary}</p>}
+        {chosen && chosen.params.length > 0 && (
+          <div className="form-group">
+            <span className="field-label">Strategy settings</span>
+            <div className="param-grid">
+              {chosen.params.map((p) => (
+                <label key={p.key} title={p.help}>
+                  <span>{p.label}</span>
+                  <input type="number" min={p.minimum} max={p.maximum} step={p.step} value={params[p.key] ?? p.default}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (Number.isFinite(v)) setAllParams({ ...allParams, [strategy]: { ...params, [p.key]: v } });
+                    }} />
+                </label>
+              ))}
+            </div>
+            {changed.length > 0 && (
+              <button type="button" className="ghost small" onClick={() => setAllParams({ ...allParams, [strategy]: {} })}>
+                Back to the standard settings
+              </button>
+            )}
+            <p className="muted small-text">"Candles" means whatever timeframe you pick: 55 on weekly candles is about a year.
+              Decide on one or two settings before you test. Trying lots until one looks good finds luck, not an edge.</p>
+          </div>
+        )}
         {chosen?.canShort && (
           <div className="segmented wide">
             <button type="button" className={direction === "long" ? "on" : ""} onClick={() => setDirection("long")}>Buys only</button>
@@ -133,6 +164,9 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
                 {new Date(result.from * 1000).toLocaleDateString("en-GB", { month: "short", year: "numeric" })} to{" "}
                 {new Date(result.to * 1000).toLocaleDateString("en-GB", { month: "short", year: "numeric" })} · {result.riskPct}% a trade ·
                 at most {result.maxOpenRiskPct}% at risk at once
+              </p>
+              <p className="muted small-text">
+                Settings: {resultSettings.length ? `changed from standard: ${resultSettings.join(" · ")}` : "standard"}
               </p>
               <p className="headline">{result.headline}</p>
             </header>

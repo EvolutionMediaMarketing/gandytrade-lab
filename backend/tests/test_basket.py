@@ -134,3 +134,12 @@ def test_basket_keep_going_past_the_drawdown_limit():
                       keep_going=True)
     assert stopped.halted and stopped.wanted_after_stop > 0 and stopped.limit_hit_ts > 1
     assert not kept.halted and kept.kept_going and len(kept.trades) > len(stopped.trades)
+
+
+def test_basket_uses_your_strategy_settings(signed_in):
+    body = {"markets": ["EUR_USD", "GBP_USD"], "timeframe": "1d", "strategy": "breakout", "params": {"entry_len": 55, "exit_len": 20}}
+    r = signed_in.post("/api/backtests/basket", json=body)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["strategy"]["params"]["entry_len"] == 55 and out["strategy"]["params"]["exit_len"] == 20
+    assert "breakout length 55" in out["headline"] and "exit length 20" in out["headline"]
