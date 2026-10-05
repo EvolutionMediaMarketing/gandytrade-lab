@@ -626,3 +626,23 @@ export interface WeeklyReview {
 export interface ReviewSummary {
   week: string; label: string; focus: string; stuck: string | null; closed: number | null; net: number | null; ruleScore: number | null;
 }
+
+
+export interface BasketInit {
+  markets: string[];
+  strategy: string;
+  timeframe: string;
+  direction?: string;
+}
+
+export interface BasketResult {
+  strategy: { key: string; name: string; params: Record<string, number> };
+  timeframe: string; mode: string; direction: string; startBalance: number; maxOpenRiskPct: number; riskPct: number;
+  from: number; to: number; years: number;
+  markets: { market: string; name: string; basketTrades: number; basketNet: number; basketWinRate: number | null; basketAvgR: number | null;
+             aloneReturnPct: number; aloneTrades: number; aloneDrawdownPct: number; holdReturnPct: number }[];
+  metrics: BacktestResult["metrics"]; buyHold: BacktestResult["buyHold"]; averageAloneReturnPct: number;
+  headline: string; warnings: { level: string; text: string }[]; skipped: Record<string, number>;
+  equity: { time: number; value: number }[]; buyHoldEquity: { time: number; value: number }[];
+  sample: boolean;
+}

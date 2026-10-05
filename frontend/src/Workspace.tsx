@@ -6,6 +6,7 @@ import LearnPage from "./LearnPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import DashboardPage from "./DashboardPage";
+import BasketPanel from "./BasketPanel";
 import ReviewPage from "./ReviewPage";
 import ResearchPage from "./ResearchPage";
 import type { ShownTrade } from "./ChartView";
@@ -15,7 +16,7 @@ import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -98,6 +99,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   useEffect(() => {
     api.backupStatus(true).then((b) => setBackupOverdue(b.overdue)).catch(() => {});
   }, [page]);
+  const [basketMode, setBasketMode] = useState(false);
+  const [basketInit, setBasketInit] = useState<BasketInit | null>(null);
   const [autoPrefill, setAutoPrefill] = useState<AutoPrefill | null>(null);
   const [backtestInit, setBacktestInit] = useState<BacktestInit | undefined>();
 
@@ -303,9 +306,19 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         </div>
       )}
       {page === "backtest" && (
+        <div className="subtabs" role="tablist" aria-label="Backtest type">
+          <button type="button" role="tab" aria-selected={!basketMode} className={basketMode ? "" : "on"} onClick={() => setBasketMode(false)}>One market</button>
+          <button type="button" role="tab" aria-selected={basketMode} className={basketMode ? "on" : ""} onClick={() => setBasketMode(true)}>Basket of markets</button>
+        </div>
+      )}
+      {page === "backtest" && !basketMode && (
         <BacktestPage key={JSON.stringify(backtestInit ?? {})} catalogue={catalogue} favourites={favourites}
           onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={backtestInit}
           onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
+      )}
+      {page === "backtest" && basketMode && (
+        <BasketPanel key={JSON.stringify(basketInit ?? {})} catalogue={catalogue} favourites={favourites}
+          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={basketInit} />
       )}
       {page === "paper" && (
         <PaperPage onAuthError={handleAuth}
@@ -324,8 +337,9 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "research" && (
         <ResearchPage onAuthError={handleAuth}
-          onBacktest={(r) => { setBacktestInit({ symbol: r.symbol, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, mode: "cfd", years: 0 }); go("backtest"); }}
-          onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
+          onBacktest={(r) => { setBacktestInit({ symbol: r.symbol, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, mode: "cfd", years: 0 }); setBasketMode(false); go("backtest"); }}
+          onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }}
+          onBasket={(b) => { setBasketInit(b); setBasketMode(true); go("backtest"); }} />
       )}
       {page === "dashboard" && <DashboardPage onAuthError={handleAuth} />}
       {page === "review" && <ReviewPage onAuthError={handleAuth} />}

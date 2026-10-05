@@ -90,6 +90,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Weekly review (**done**) | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
 | Automatic feedback (**done**) | Rule-based warnings, e.g. moving stops further away, trading more after losses, losses twice the size of wins | Dashboard |
 | Coach export (**done**) | One click copies a summary of a backtest or the week's trades and journal, ready for a coaching session with Claude | Dashboard and backtest pages |
+| Basket backtest (**done**) | One strategy on several markets at once from one shared account, with the open-risk limit, shared margin and account limits across the basket; compared with each market alone and with holding the basket | Backtest page → Basket of markets |
 
 **Gate:** paper accounts run for four weeks without errors, and every fill matches the price recorded at that moment.
 

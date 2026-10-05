@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { displayCode } from "./MarketPicker";
-import type { AutoPrefill, ResearchAcross, ResearchCheck, ResearchJob, ResearchOptions, ResearchRow } from "./types";
+import type { AutoPrefill, ResearchAcross, ResearchCheck, ResearchJob, ResearchOptions, ResearchRow, BasketInit } from "./types";
 
 const POLL_MS = 5000;
 const CHECK_LABEL: Record<ResearchCheck, string> = {
@@ -28,9 +28,10 @@ interface Props {
   onAuthError: (err: unknown) => void;
   onBacktest: (row: { symbol: string; strategy: string; timeframe: string; direction: string }) => void;
   onRunOnPaper: (p: AutoPrefill) => void;
+  onBasket?: (b: BasketInit) => void;
 }
 
-export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: Props) {
+export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper, onBasket }: Props) {
   const [options, setOptions] = useState<ResearchOptions | null>(null);
   const [jobs, setJobs] = useState<ResearchJob[]>([]);
   const [shown, setShown] = useState<ResearchJob | null>(null);
@@ -221,14 +222,14 @@ export default function ResearchPage({ onAuthError, onBacktest, onRunOnPaper }: 
       </div>
 
       {!shown && !active && <div className="empty-state"><p className="muted">No scans yet. Run one above; it takes a few minutes.</p></div>}
-      {shown?.summary && <Results job={shown} options={options} onBacktest={onBacktest} onRunOnPaper={onRunOnPaper} />}
+      {shown?.summary && <Results job={shown} options={options} onBacktest={onBacktest} onRunOnPaper={onRunOnPaper} onBasket={onBasket} />}
     </div>
   );
 }
 
-function Results({ job, options, onBacktest, onRunOnPaper }: {
+function Results({ job, options, onBacktest, onRunOnPaper, onBasket }: {
   job: ResearchJob; options: ResearchOptions | null;
-  onBacktest: Props["onBacktest"]; onRunOnPaper: Props["onRunOnPaper"];
+  onBacktest: Props["onBacktest"]; onRunOnPaper: Props["onRunOnPaper"]; onBasket?: Props["onBasket"];
 }) {
   const s = job.summary!;
   const [showAll, setShowAll] = useState(false);
@@ -277,7 +278,7 @@ function Results({ job, options, onBacktest, onRunOnPaper }: {
           </p>
           <div className="table-wrap">
             <table className="trades">
-              <thead><tr><th>Strategy</th><th>Direction</th><th>Timeframe</th><th className="num">Held on</th><th>Markets</th><th className="num">Avg per year</th><th className="num">Trades/yr (all)</th></tr></thead>
+              <thead><tr><th>Strategy</th><th>Direction</th><th>Timeframe</th><th className="num">Held on</th><th>Markets</th><th className="num">Avg per year</th><th className="num">Trades/yr (all)</th><th></th></tr></thead>
               <tbody>
                 {s.acrossMarkets.map((a: ResearchAcross) => (
                   <tr key={`${a.strategy}-${a.direction}-${a.timeframe}`}>
@@ -288,6 +289,12 @@ function Results({ job, options, onBacktest, onRunOnPaper }: {
                       {a.years !== undefined && a.years < 1 ? `${pct(a.avgReturnPct ?? 0)} over ${span(a.years)}` : pct(a.avgAnnualPct)}
                     </td>
                     <td className="num">{a.tradesPerYear}</td>
+                    <td>{onBasket && (
+                      <button type="button" className="ghost small" title="Test these markets together, in one account"
+                        onClick={() => onBasket({ markets: a.heldMarkets.map((m) => m.market), strategy: a.strategy, timeframe: a.timeframe, direction: a.direction })}>
+                        Backtest as a basket
+                      </button>
+                    )}</td>
                   </tr>
                 ))}
               </tbody>
