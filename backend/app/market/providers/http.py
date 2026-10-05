@@ -15,6 +15,7 @@ ALLOWED_HOSTS = frozenset({
     "stream-fxpractice.oanda.com",  # OANDA practice: live price stream (receive only)
     "api.twelvedata.com",
     "www.alphavantage.co",
+    "api.telegram.org",  # alerts to your own Telegram bot (sending messages only)
 })
 
 

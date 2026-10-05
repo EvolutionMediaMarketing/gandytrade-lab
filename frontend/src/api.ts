@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AlertStatus, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -110,5 +110,11 @@ export const api = {
   backupStatus: (background = false) => request<BackupStatus>("/api/backup/status", {}, background),
   performance: (accountId: number) => request<Performance>(`/api/paper/accounts/${accountId}/performance`),
   coachExport: (accountId: number) => request<{ text: string }>(`/api/paper/accounts/${accountId}/coach-export`),
+  alertStatus: () => request<AlertStatus>("/api/alerts"),
+  findChats: () => request<{ chats: { chatId: string; name: string; type: string }[] }>("/api/alerts/find-chats", { method: "POST" }),
+  linkChat: (chatId: string) => request<AlertStatus>("/api/alerts/link", { method: "POST", body: JSON.stringify({ chat_id: chatId }) }),
+  unlinkChat: () => request<AlertStatus>("/api/alerts/unlink", { method: "POST" }),
+  chooseAlerts: (kinds: string[]) => request<AlertStatus>("/api/alerts", { method: "PATCH", body: JSON.stringify({ kinds }) }),
+  testAlert: () => request<{ ok: boolean }>("/api/alerts/test", { method: "POST" }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

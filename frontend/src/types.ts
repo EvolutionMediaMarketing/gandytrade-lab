@@ -585,3 +585,13 @@ export interface Performance {
   breakdown: { label: string; symbol: string; trades: number; net: number; winRate: number | null; avgR: number | null; costs: number }[];
   feedback: { level: "stop" | "caution" | "info" | "good"; title: string; text: string }[];
 }
+
+
+export interface AlertStatus {
+  botConfigured: boolean;
+  chatLinked: boolean;
+  chatName: string;
+  kinds: string[];
+  kindLabels: Record<string, string>;
+  recent: { at: string; kind: string; text: string; status: string; error: string }[];
+}

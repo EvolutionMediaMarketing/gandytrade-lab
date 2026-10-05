@@ -491,3 +491,12 @@ ul.plain { margin: 0; padding-left: 18px; }
 .page.dashboard .equity-host { height: 280px; }
 .warn.good { background: rgba(52, 211, 153, 0.08); color: #6ee7b7; border-color: var(--accent); }
 .export-text { width: 100%; margin-top: 10px; font-family: var(--mono); font-size: 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+
+/* Alerts */
+.alerts-card ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.alerts-card code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 4px; border-radius: 4px; }
+.alert-kinds { display: grid; gap: 6px; margin: 8px 0; }
+.check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.check-row input { accent-color: var(--accent); margin-top: 3px; }
+.alert-history li { margin: 8px 0; }
+.alert-history pre { margin: 2px 0 0; white-space: pre-wrap; font-family: inherit; font-size: 13px; }

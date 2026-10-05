@@ -35,6 +35,7 @@ from ..market.timeframes import Timeframe, get_timeframe
 from ..models import AutoRun, PaperAccount, PaperTrade, User
 from ..strategies.base import Strategy
 from ..strategies.library import STRATEGIES, get_strategy
+from .. import alerts
 from . import service as paper
 
 log = logging.getLogger(__name__)
@@ -226,7 +227,7 @@ def change(db: Session, user: User, run_id: int, action: str, close_open: bool =
             q = paper.latest_quote(db, symbol)
             paper.check_fresh(q, symbol)
             paper.close(db, acct, t, q.mid, q.ts, q.source, f"Closed when the run was {word.lower()}", "closed", q.spread)
-            paper.update_limits(acct, paper.account_state(db, acct)["equity"])
+            paper.update_limits(acct, paper.account_state(db, acct)["equity"], db)
             run.last_message = f"{word} by you, and its open trade was closed."
         elif t is not None:
             run.last_message = (f"{word} by you. Its open trade stays open with its stop-loss; "
@@ -286,7 +287,7 @@ def step(db: Session, run: AutoRun) -> str:
     if t is not None and d.exit_label:
         late = " (met on a missed candle, so closed late)" if d.late_exit else ""
         paper.close(db, acct, t, q.mid, q.ts, q.source, f"Exit rule: {d.exit_label}"[:80], "exit_rule", q.spread)
-        paper.update_limits(acct, paper.account_state(db, acct)["equity"])
+        paper.update_limits(acct, paper.account_state(db, acct)["equity"], db)
         done.append(f"closed the {'buy' if t.side > 0 else 'short'} (exit rule: {d.exit_label}){late}")
         t = None
     if t is None and d.entry:
@@ -329,6 +330,7 @@ def run_due(db: Session, last_looked: dict, now: float | None = None) -> set[int
             symbol = lookup(db, run.symbol)
         except ValueError:
             run.status, run.last_message = "paused", "Paused: this market is no longer available."
+            alerts.notify(db, run.user_id, "problems", f"Automatic run paused: {run.strategy} on {run.symbol}\n{run.last_message}")
             db.commit()
             continue
         if not due(run, symbol.provider, last_looked, now):
@@ -350,6 +352,9 @@ def run_due(db: Session, last_looked: dict, now: float | None = None) -> set[int
             if run.errors >= MAX_ERRORS:
                 run.status = "paused"
                 run.last_message = f"Paused after {MAX_ERRORS} problems in a row. Last one: {exc}"[:255]
+                name = STRATEGIES[run.strategy].name if run.strategy in STRATEGIES else run.strategy
+                alerts.notify(db, run.user_id, "problems",
+                              f"Automatic run paused: {name} on {run.symbol}\n{run.last_message}\nResume it on the Paper page once it's sorted.")
         run.last_check_at = datetime.now(timezone.utc)
         db.commit()
     return touched

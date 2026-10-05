@@ -271,3 +271,31 @@ class BackupRun(Base):
     restore_tested: Mapped[bool] = mapped_column(default=False)
     uploaded: Mapped[bool] = mapped_column(default=False)
     detail: Mapped[str] = mapped_column(String(255), default="")
+
+
+class AlertSettings(Base):
+    """Where alerts go (your Telegram chat) and which kinds you want."""
+
+    __tablename__ = "alert_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    chat_id: Mapped[str] = mapped_column(String(32), default="")
+    chat_name: Mapped[str] = mapped_column(String(120), default="")
+    kinds: Mapped[list] = mapped_column(JSON, default=list)  # trades | problems | research
+
+
+class Alert(Base):
+    """A message waiting to be sent, or already sent (kept for a short history)."""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)  # None: everyone
+    kind: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    status: Mapped[str] = mapped_column(String(10), default="pending", index=True)  # pending | sent | skipped | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str] = mapped_column(String(255), default="")

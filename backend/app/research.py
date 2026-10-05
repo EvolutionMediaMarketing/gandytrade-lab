@@ -235,6 +235,15 @@ def work(db: Session, budget: float = PASS_BUDGET_SECONDS) -> bool:
         job.status = "done"
         job.finished_at = datetime.now(timezone.utc)
         job.message = f"Finished: {len(rows)} combinations tested."
+        if job.automatic:
+            from .alerts import notify
+
+            s = summarise(rows)
+            top = "; ".join(f"{r['strategyName']} on {r['market']} {r['timeframe']}" for r in s["shortlist"][:3])
+            notify(db, job.user_id, "research", (
+                f"Weekly research scan finished: {len(rows)} combinations tested, {len(s['shortlist'])} on the shortlist."
+                + (f"\nTop: {top}" if top else "\nNothing passed all five checks this week.")
+                + "\nDetails on the Research page."))
     db.commit()
     return True
 

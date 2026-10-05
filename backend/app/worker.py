@@ -1,5 +1,6 @@
 """Background worker: watches open paper trades and closes them at their stop-loss or target,
-and runs automatic paper trading (strategies trading paper accounts by their own rules).
+runs automatic paper trading (strategies trading paper accounts by their own rules), strategy
+research scans, and sends Telegram alerts.
 
 Runs in its own container (`gandytrade-worker`) with the same code and database as the app:
 
@@ -22,7 +23,7 @@ from .logsafe import install_log_redaction
 from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
-from . import research
+from . import alerts, research
 from .paper import auto
 from .paper import service as paper
 
@@ -100,8 +101,14 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None) ->
                 equity = acct.cash
             else:
                 continue  # its markets weren't due a check this pass
-            paper.update_limits(acct, equity)
+            paper.update_limits(acct, equity, db)
         db.commit()
+        # Send any alerts the steps above queued (Telegram trouble never stops the rest).
+        try:
+            alerts.send_pending(db)
+        except Exception:
+            db.rollback()
+            log.exception("Sending alerts failed")
     except Exception:
         db.rollback()
         log.exception("Worker pass failed")

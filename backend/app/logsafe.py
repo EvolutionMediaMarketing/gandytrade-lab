@@ -12,6 +12,7 @@ _PATTERNS = [
     (re.compile(r"(?i)(apikey|api_key|token|access_token|password|secret)=([^&\s\"']+)"), r"\1=[hidden]"),
     (re.compile(r"(?i)(bearer|apikey)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [hidden]"),
     (re.compile(r"(?i)(postgres(?:ql)?(?:\+\w+)?://[^:/\s]+:)[^@\s]+@"), r"\1[hidden]@"),
+    (re.compile(r"/bot\d+:[A-Za-z0-9_-]{20,}"), "/bot[hidden]"),  # Telegram puts the bot token in the address
 ]
 
 

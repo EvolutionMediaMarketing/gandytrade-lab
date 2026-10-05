@@ -187,8 +187,9 @@ def open_risk_limit(acct: PaperAccount, equity: float) -> float:
     return max(0.0, equity) * pct / 100
 
 
-def update_limits(acct: PaperAccount, equity: float) -> None:
-    """Start a new trading day, track the high point and apply the drawdown limit."""
+def update_limits(acct: PaperAccount, equity: float, db: Session | None = None) -> None:
+    """Start a new trading day, track the high point and apply the drawdown limit.
+    With `db`, an alert is queued when the account pauses itself."""
     today = datetime.now(UK).strftime("%Y-%m-%d")
     if acct.day != today:
         acct.day, acct.day_start_equity = today, equity
@@ -198,6 +199,10 @@ def update_limits(acct: PaperAccount, equity: float) -> None:
         acct.halted = True
         acct.halt_reason = (f"Paused: the account fell {acct.max_drawdown_pct:g}% from its high "
                             f"(£{acct.peak_equity:,.2f} to £{equity:,.2f}). Review what happened before resuming.")
+        if db is not None:
+            from .. import alerts
+
+            alerts.notify(db, acct.user_id, "problems", f"Paper account paused: {acct.name}\n{acct.halt_reason}")
     if funded <= 0:
         acct.halted = True
 
@@ -263,7 +268,7 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
         raise PaperError("This account holds real shares, so it can only buy. Use a CFD / spread bet account to go short.")
 
     state = account_state(db, acct)
-    update_limits(acct, state["equity"])
+    update_limits(acct, state["equity"], db)
     block = entry_block(acct, state["equity"])
     if block:
         db.commit()
@@ -341,6 +346,12 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
     db.flush()
     db.add(PaperEvent(trade_id=t.id, kind="opened", price=fill, mid=q.mid, quote_ts=q.ts, quote_source=q.source,
                       detail=_detail(note or ("sample prices" if q.sample else ""), q.spread)))
+    if source == "auto":
+        from .. import alerts
+        from ..strategies.library import STRATEGIES
+
+        name = STRATEGIES[strategy].name if strategy in STRATEGIES else "Automatic run"
+        alerts.notify(db, acct.user_id, "trades", alerts.opened_text(t, symbol, acct.name, name))
     db.commit()
     return t
 
@@ -434,6 +445,10 @@ def close(db: Session, acct: PaperAccount, t: PaperTrade, level: float, quote_ts
     acct.cash += move - fees
     db.add(PaperEvent(trade_id=t.id, kind=kind, price=fill, mid=level, quote_ts=quote_ts, quote_source=source,
                       detail=_detail(reason, spread)))
+    if kind != "closed":  # stops, targets and exit rules; not the trades you closed yourself
+        from .. import alerts
+
+        alerts.notify(db, acct.user_id, "trades", alerts.closed_text(t, symbol, acct.name))
 
 
 def close_now(db: Session, user: User, trade_id: int) -> PaperTrade:
@@ -447,7 +462,7 @@ def close_now(db: Session, user: User, trade_id: int) -> PaperTrade:
     check_fresh(q, symbol)
     close(db, acct, t, q.mid, q.ts, q.source, "Closed by you", "closed", q.spread)
     state = account_state(db, acct)
-    update_limits(acct, state["equity"])
+    update_limits(acct, state["equity"], db)
     db.commit()
     return t
 

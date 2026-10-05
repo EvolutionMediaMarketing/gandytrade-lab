@@ -112,7 +112,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 | Walk-forward test | Tunes settings on one stretch of history and checks them on the next, unseen stretch, repeated across the data | Backtest page |
 | Monte Carlo test | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
 | Robustness verdict | Labels each strategy: Reject / Watchlist / Incubate / Candidate, from multi-market, multi-timeframe, walk-forward and Monte Carlo results | Strategy pages |
-| Alerts | Price levels and signal-assistant setups, sent by email (from the app's own address) or Telegram | Alerts page |
+| Alerts (**Telegram done**) | Automatic trades opening and closing, stops and targets hit, runs or accounts pausing, backup problems, weekly research; price levels and signal setups still to come | Settings → Alerts |
 | Economic calendar | Upcoming interest-rate decisions, jobs and inflation reports that move forex, shown on the chart | Panel beside the chart |
 
 **Gate:** a deliberately overfitted test strategy is correctly labelled Reject by the robustness checks.

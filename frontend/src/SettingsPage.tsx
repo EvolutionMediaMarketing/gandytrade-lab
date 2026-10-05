@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
-import type { BackupStatus, PaperAccount } from "./types";
+import type { AlertStatus, BackupStatus, PaperAccount } from "./types";
 
 interface Rule {
   key: "risk_pct" | "max_open_risk_pct" | "daily_loss_pct" | "max_drawdown_pct";
@@ -46,6 +46,7 @@ export default function SettingsPage({ onAuthError }: { onAuthError: (err: unkno
         <p className="muted">Risk safeguards for each paper account. They apply to every trade, by hand or automatic. Each has a safe range it can't go beyond.</p>
       </section>
       {accounts.filter((a) => !a.archived).map((a) => <AccountSettings key={a.id} account={a} onSaved={load} onAuthError={onAuthError} />)}
+      <Alerts onAuthError={onAuthError} />
       <Backups onAuthError={onAuthError} />
       {accounts.some((a) => a.archived) && (
         <section className="card">
@@ -164,6 +165,88 @@ function Backups({ onAuthError }: { onAuthError: (err: unknown) => void }) {
             </table>
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+function Alerts({ onAuthError }: { onAuthError: (err: unknown) => void }) {
+  const [status, setStatus] = useState<AlertStatus | null>(null);
+  const [chats, setChats] = useState<{ chatId: string; name: string }[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.alertStatus().then(setStatus).catch(onAuthError); }, [onAuthError]);
+
+  function run<T>(p: Promise<T>, done?: (v: T) => void) {
+    setBusy(true);
+    setNote(null);
+    p.then((v) => done?.(v)).catch((err) => { onAuthError(err); setNote(err instanceof Error ? err.message : "That didn't work."); })
+      .finally(() => setBusy(false));
+  }
+  if (!status) return null;
+
+  return (
+    <section className="card alerts-card">
+      <h3>Alerts on your phone (Telegram)</h3>
+      {!status.botConfigured ? (
+        <>
+          <p className="muted small-text">Get a message when an automatic trade opens or closes, a stop-loss or target is hit, or something pauses itself. Set-up takes about five minutes:</p>
+          <ol className="steps">
+            <li>In Telegram, open <b>@BotFather</b> (the official bot with a blue tick), send <code>/newbot</code>, and follow the prompts to name it (for example "GandyTrade alerts").</li>
+            <li>BotFather replies with a <b>token</b>. Don't paste it into any chat. On the server, add it to the end of <code>/home/gandytradeco/gandytrade/app.env</code> as <code>GT_TELEGRAM_BOT_TOKEN=the token</code>.</li>
+            <li>Run the usual update command, then come back here.</li>
+          </ol>
+        </>
+      ) : !status.chatLinked ? (
+        <>
+          <p className="muted small-text">Your bot is ready. Now link the chat the alerts go to:</p>
+          <ol className="steps">
+            <li>In Telegram, open your new bot and send it any message (for example "hello").</li>
+            <li><button type="button" className="small" disabled={busy} onClick={() => run(api.findChats(), (r) => setChats(r.chats))}>Find my chat</button></li>
+          </ol>
+          {chats && (chats.length === 0 ? <p className="warn caution small-text">No messages found yet. Send your bot a message, then try again.</p> : (
+            <ul className="plain">
+              {chats.map((c) => (
+                <li key={c.chatId}>{c.name}{" "}
+                  <button type="button" className="primary small" disabled={busy} onClick={() => run(api.linkChat(c.chatId), (s) => { setStatus(s); setChats(null); })}>Use this chat</button>
+                </li>
+              ))}
+            </ul>
+          ))}
+        </>
+      ) : (
+        <>
+          <p>Sending to <b>{status.chatName}</b>.{" "}
+            <button type="button" className="link-button" disabled={busy} onClick={() => run(api.testAlert(), () => setNote("Test message sent: check Telegram."))}>Send a test</button>{" · "}
+            <button type="button" className="link-button" disabled={busy} onClick={() => {
+              if (window.confirm("Stop sending alerts to this chat?")) run(api.unlinkChat(), setStatus);
+            }}>Unlink</button>
+          </p>
+          <div className="alert-kinds">
+            {Object.entries(status.kindLabels).map(([key, label]) => (
+              <label key={key} className="check-row">
+                <input type="checkbox" checked={status.kinds.includes(key)} disabled={busy}
+                  onChange={(e) => run(api.chooseAlerts(e.target.checked ? [...status.kinds, key] : status.kinds.filter((k) => k !== key)), setStatus)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="muted small-text">Trades you close yourself don't send alerts. Messages go out within about a minute.</p>
+        </>
+      )}
+      {note && <p className="muted">{note}</p>}
+      {status.recent.length > 0 && (
+        <details>
+          <summary className="muted small-text">Recent alerts</summary>
+          <ul className="plain alert-history">
+            {status.recent.map((a, i) => (
+              <li key={i}>
+                <span className="muted small-text">{when(a.at)} · {a.status === "sent" ? "sent" : a.status === "pending" ? "waiting" : a.status === "skipped" ? "not sent (switched off)" : `failed: ${a.error}`}</span>
+                <pre>{a.text}</pre>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );

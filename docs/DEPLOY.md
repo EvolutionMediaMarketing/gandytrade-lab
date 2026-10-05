@@ -151,3 +151,11 @@ bash deploy/scripts/as-app-user.sh systemctl --user stop gandytrade-app gandytra
 ## Backups
 
 Nightly backups (test-restored, encrypted, and copied to a Backblaze B2 bucket) are set up and restored as described in [BACKUPS.md](BACKUPS.md).
+
+## Telegram alerts
+
+1. In Telegram, open **@BotFather** (blue tick), send `/newbot` and follow the prompts.
+2. Add the token it gives you to `~/gandytrade/app.env` as `GT_TELEGRAM_BOT_TOKEN=...` (never paste it into a chat).
+3. Run the usual update, then in the app go to **Settings → Alerts**, message your bot, and click **Find my chat**.
+
+Only `api.telegram.org` is added to the outbound allowlist for this, and the token is hidden in logs.

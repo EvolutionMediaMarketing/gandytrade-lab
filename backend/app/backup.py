@@ -132,6 +132,11 @@ def record(ok: bool, name: str = "", size: int = 0, restore_tested: bool = False
     try:
         db.add(BackupRun(ok=ok, name=name[:160], size=size, restore_tested=restore_tested, uploaded=uploaded,
                          detail=detail[:255]))
+        if not ok:
+            from .alerts import notify
+
+            notify(db, None, "problems", f"GandyTrade backup problem\n{detail[:300] or 'The nightly backup failed.'}\n"
+                                         "See Settings → Backups.")
         db.commit()
     finally:
         db.close()

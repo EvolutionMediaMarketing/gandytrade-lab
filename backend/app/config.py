@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     backup_key: str = ""
     backup_passphrase: str = ""
 
+    # Alerts to your phone through your own Telegram bot (from @BotFather). The chat is linked in Settings.
+    telegram_bot_token: str = ""
+
     # Where the built frontend lives inside the container.
     frontend_dir: str = "/app/frontend"
 
