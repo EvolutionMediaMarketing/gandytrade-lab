@@ -23,7 +23,7 @@ from .logsafe import install_log_redaction
 from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
-from . import alerts, research
+from . import alerts, research, reviews
 from .paper import auto
 from .paper import service as paper
 
@@ -103,6 +103,12 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None) ->
                 continue  # its markets weren't due a check this pass
             paper.update_limits(acct, equity, db)
         db.commit()
+        # Sunday evening: a nudge if this week's review isn't done.
+        try:
+            reviews.remind(db)
+        except Exception:
+            db.rollback()
+            log.exception("Review reminder failed")
         # Send any alerts the steps above queued (Telegram trouble never stops the rest).
         try:
             alerts.send_pending(db)

@@ -500,3 +500,12 @@ ul.plain { margin: 0; padding-left: 18px; }
 .check-row input { accent-color: var(--accent); margin-top: 3px; }
 .alert-history li { margin: 8px 0; }
 .alert-history pre { margin: 2px 0 0; white-space: pre-wrap; font-family: inherit; font-size: 13px; }
+
+/* Weekly review */
+.page.review { padding: 16px; max-width: 980px; margin: 0 auto; display: grid; gap: 14px; }
+.review-step { display: grid; gap: 10px; }
+.review-step h3 { display: flex; align-items: center; gap: 10px; margin: 0; }
+.step-n { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 700; }
+.review-step textarea, .focus-input { width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+.focus-input { font-size: 15px; }
+.trade-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }

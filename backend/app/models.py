@@ -299,3 +299,20 @@ class Alert(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str] = mapped_column(String(255), default="")
+
+
+class WeeklyReview(Base):
+    """Your weekly review: the week's facts as they were, your answers, and one focus for next week."""
+
+    __tablename__ = "weekly_reviews"
+    __table_args__ = (UniqueConstraint("user_id", "week", name="uq_weekly_review"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    week: Mapped[str] = mapped_column(String(10))  # Monday the week starts, UK date, e.g. 2026-09-28
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    facts: Mapped[dict] = mapped_column(JSON, default=dict)  # saved when the review is completed
+    focus: Mapped[str] = mapped_column(String(200), default="")
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

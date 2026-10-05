@@ -29,8 +29,9 @@ KINDS = {
     "trades": "Trades: automatic trades opening and closing, and stop-losses or targets hit on any paper trade",
     "problems": "Problems: an automatic run or an account pausing itself, or a backup failing",
     "research": "Research: when the weekly scan finishes, with the size of the shortlist",
+    "reviews": "Weekly review: a reminder on Sunday evening if this week's review isn't done",
 }
-DEFAULT_KINDS = ["trades", "problems", "research"]
+DEFAULT_KINDS = ["trades", "problems", "research", "reviews"]
 MAX_ATTEMPTS = 5
 PER_PASS = 20
 KEEP_DAYS = 30

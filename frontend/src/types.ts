@@ -595,3 +595,34 @@ export interface AlertStatus {
   kindLabels: Record<string, string>;
   recent: { at: string; kind: string; text: string; status: string; error: string }[];
 }
+
+
+export interface ReviewTrade {
+  id: number; account: string; symbol: string; side: string; who: string; pnl: number; r: number | null;
+  exitReason: string; closed: string; reason: string; lesson: string; flags: string[];
+}
+
+export interface ReviewFacts {
+  week: string; label: string; closed: number; opened: number; manualClosed: number; autoClosed: number;
+  net: number; winRate: number | null; avgR: number | null; costs: number; ruleScore: number | null;
+  best: ReviewTrade | null; worst: ReviewTrade | null; broken: ReviewTrade[];
+  accounts: { name: string; trades: number; net: number; winRate: number | null; opened: number }[];
+  runs: { strategy: string; symbol: string; timeframe: string; account: string; status: string; weekTrades: number; weekNet: number;
+          totalTrades: number; liveAvgR: number | null; backtestAvgR: number | null; message: string }[];
+  noticed: { level: string; title: string; text: string; account: string }[];
+  noLesson: number;
+}
+
+export interface WeeklyReview {
+  week: string;
+  facts: ReviewFacts;
+  answers: Record<string, string>;
+  focus: string;
+  completed: boolean;
+  completedAt: string | null;
+  previousFocus: { week: string; focus: string } | null;
+}
+
+export interface ReviewSummary {
+  week: string; label: string; focus: string; stuck: string | null; closed: number | null; net: number | null; ruleScore: number | null;
+}

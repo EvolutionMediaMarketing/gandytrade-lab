@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AlertStatus, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -116,5 +116,10 @@ export const api = {
   unlinkChat: () => request<AlertStatus>("/api/alerts/unlink", { method: "POST" }),
   chooseAlerts: (kinds: string[]) => request<AlertStatus>("/api/alerts", { method: "PATCH", body: JSON.stringify({ kinds }) }),
   testAlert: () => request<{ ok: boolean }>("/api/alerts/test", { method: "POST" }),
+  currentReview: () => request<WeeklyReview>("/api/reviews/current"),
+  reviewHistory: () => request<{ reviews: ReviewSummary[] }>("/api/reviews"),
+  saveReview: (week: string, body: { answers: Record<string, string>; focus: string; complete: boolean }) =>
+    request<WeeklyReview>(`/api/reviews/${week}`, { method: "PUT", body: JSON.stringify(body) }),
+  reviewCoach: (week: string) => request<{ text: string }>(`/api/reviews/${week}/coach`),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

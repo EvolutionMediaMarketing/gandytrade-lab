@@ -87,7 +87,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Learning path | The 12-week course, unlocked week by week, each with short lessons, a quiz and one task in the app | Learn section |
 | Pre-trade checklist | Trend direction, stop-loss, position size and a one-sentence reason; the trade can't be placed until complete | Trade panel |
 | Rule score | Each trade scored on whether the plan was followed, separately from profit | Journal and dashboard |
-| Weekly review | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
+| Weekly review (**done**) | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
 | Automatic feedback (**done**) | Rule-based warnings, e.g. moving stops further away, trading more after losses, losses twice the size of wins | Dashboard |
 | Coach export (**done**) | One click copies a summary of a backtest or the week's trades and journal, ready for a coaching session with Claude | Dashboard and backtest pages |
 
