@@ -168,7 +168,7 @@ def test_trade_events_alert(signed_in, market):
     acct = db.get(PaperAccount, acct_id)
     auto = paper.place(db, acct, "GBP_USD", 1, 1.24, 1.27, "1h", source="auto", strategy="breakout")
     opened = _queued()
-    assert opened[-1][0] == "trades" and "opened (automatic)" in opened[-1][1] and "20-day breakout" in opened[-1][1]
+    assert opened[-1][0] == "trades" and "opened (automatic)" in opened[-1][1] and "Breakout" in opened[-1][1]
     # A stop-loss hit by the worker alerts...
     market.mid = 1.239
     market.bars = [Bar(NOW + 60, 1.25, 1.25, 1.238, 1.239, 0)]

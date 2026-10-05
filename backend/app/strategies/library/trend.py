@@ -137,12 +137,13 @@ def _breakout(df: pd.DataFrame, p: dict) -> Rules:
 
 BREAKOUT = Strategy(
     key="breakout",
-    name="20-day breakout",
-    summary="Buy when price closes at a new 20-candle high; sell at a 10-candle low.",
+    name="Breakout",
+    summary="Buy when price closes at a new high of the last N candles; sell at a low of the last M. "
+            "Named by its two lengths: Breakout 20/10 is the standard, Breakout 55/20 a slower version.",
     rules_text=[
-        "Buy at the next open when the price closes above the highest high of the previous 20 candles.",
+        "Buy at the next open when the price closes above the highest high of the previous N candles (breakout length, standard 20).",
         "Stop-loss 2 × ATR below the entry.",
-        "Sell when the price closes below the lowest low of the previous 10 candles.",
+        "Sell when the price closes below the lowest low of the previous M candles (exit length, standard 10).",
     ],
     works_when="Big, lasting moves, especially in commodities and currencies.",
     fails_when="False breakouts in quiet ranges: price pokes out and falls straight back.",
@@ -153,6 +154,7 @@ BREAKOUT = Strategy(
         STOP_ATR,
     ],
     compute=_breakout,
+    named_by_lengths=True,
 )
 
 

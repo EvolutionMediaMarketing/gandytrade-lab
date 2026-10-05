@@ -640,7 +640,7 @@ export interface BasketInit {
 }
 
 export interface BasketResult {
-  strategy: { key: string; name: string; params: Record<string, number> };
+  strategy: { key: string; name: string; label?: string; params: Record<string, number> };
   timeframe: string; mode: string; direction: string; startBalance: number; maxOpenRiskPct: number; riskPct: number;
   keptGoing: boolean; limitHit: number | null; monteCarlo?: MonteCarlo | null;
   from: number; to: number; years: number;

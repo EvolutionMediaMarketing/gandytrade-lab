@@ -182,7 +182,7 @@ def run(db: Session, req: Request) -> dict:
     return {
         "symbol": symbol.to_dict(),
         "timeframe": tf.code,
-        "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
+        "strategy": {"key": strategy.key, "name": strategy.name, "label": strategy.label(params), "params": params},
         "startBalance": start,
         "keptGoing": bool(req.keep_going),
         "monteCarlo": None if strategy.benchmark else montecarlo.run(montecarlo.Inputs(
@@ -194,7 +194,7 @@ def run(db: Session, req: Request) -> dict:
         "candles": len(bars),
         "source": history.source,
         "sample": history.sample,
-        "headline": report.headline(strategy.name, m, None if strategy.benchmark else bh),
+        "headline": report.headline(strategy.label(params), m, None if strategy.benchmark else bh),
         "metrics": m,
         "buyHold": bh,
         "warnings": warnings,

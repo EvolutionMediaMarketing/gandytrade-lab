@@ -87,7 +87,7 @@ def facts(db: Session, user: User, monday: date) -> dict:
                                                                      PaperTrade.status == "closed"))]
         rs = [(t.pnl_gbp or 0) / t.risk_gbp for t in all_trades if t.risk_gbp]
         runs.append({
-            "strategy": STRATEGIES[run.strategy].name if run.strategy in STRATEGIES else run.strategy,
+            "strategy": STRATEGIES[run.strategy].label(run.params) if run.strategy in STRATEGIES else run.strategy,
             "symbol": run.symbol, "timeframe": run.timeframe, "account": names.get(run.account_id, ""), "status": run.status,
             "weekTrades": len(week_trades), "weekNet": round(sum(t.pnl_gbp or 0 for t in week_trades), 2),
             "totalTrades": len(all_trades), "liveAvgR": round(sum(rs) / len(rs), 2) if rs else None,

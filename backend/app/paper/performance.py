@@ -187,7 +187,7 @@ def feedback(db: Session, acct: PaperAccount, closed: list[PaperTrade], s: dict,
         bt_r = (run.backtest or {}).get("avgR")
         if len(live) >= MIN_FOR_HABITS and bt_r is not None:
             live_r = sum((t.pnl_gbp or 0) / t.risk_gbp for t in live if t.risk_gbp) / len(live)
-            name = STRATEGIES[run.strategy].name if run.strategy in STRATEGIES else run.strategy
+            name = STRATEGIES[run.strategy].label(run.params) if run.strategy in STRATEGIES else run.strategy
             if live_r < bt_r - 0.3:
                 out.append({"level": "caution", "title": f"{name} on {run.symbol} is behind its backtest", "text": (
                     f"Average R on paper is {live_r:.2f} from {len(live)} trades, against {bt_r:.2f} in the backtest. "
@@ -265,7 +265,7 @@ def coach_export(db: Session, acct: PaperAccount) -> str:
 
         lines += ["", "## Automatic runs"]
         for run in runs:
-            name = STRATEGIES[run.strategy].name if run.strategy in STRATEGIES else run.strategy
+            name = STRATEGIES[run.strategy].label(run.params) if run.strategy in STRATEGIES else run.strategy
             lv, bt = live_results(db, run), run.backtest or {}
             lines.append(f"- {name}, {run.symbol} {run.timeframe} ({run.status}): paper {lv['trades']} trades, net {money(lv['net'])}, "
                          f"avg R {lv['avgR'] if lv['avgR'] is not None else '–'}; backtest {bt.get('trades', '–')} trades, "

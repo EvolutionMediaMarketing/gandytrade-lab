@@ -84,6 +84,8 @@ class Strategy:
     can_short: bool = True
     intraday_only: bool = False  # scalping: only trades on short candles (1 to 15 minutes)
     suggested_timeframe: str = ""
+    # Name it with its lengths ("Breakout 55/20"), for strategies whose lengths are the main thing you change.
+    named_by_lengths: bool = False
 
     def clean_params(self, raw: dict | None) -> dict:
         raw = raw or {}
@@ -119,6 +121,14 @@ class Strategy:
                 moved += -step if factor < 1 else step
             out[p.key] = max(step, moved)
         return self.clean_params(out)
+
+    def label(self, params: dict | None = None) -> str:
+        """The name to show for this strategy with these settings, e.g. "Breakout 55/20"."""
+        if not self.named_by_lengths:
+            return self.name
+        p = self.clean_params(params)
+        lengths = "/".join(f"{p[x.key]:g}" for x in self.length_params())
+        return f"{self.name} {lengths}" if lengths else self.name
 
     def run(self, df: pd.DataFrame, params: dict | None = None) -> Rules:
         return self.compute(df, self.clean_params(params))

@@ -142,4 +142,4 @@ def test_basket_uses_your_strategy_settings(signed_in):
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["strategy"]["params"]["entry_len"] == 55 and out["strategy"]["params"]["exit_len"] == 20
-    assert "breakout length 55" in out["headline"] and "exit length 20" in out["headline"]
+    assert "Breakout 55/20 on 2 markets" in out["headline"]

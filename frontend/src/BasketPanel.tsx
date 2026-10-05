@@ -256,7 +256,7 @@ function ToPaper({ result, settings, onAuthError, onCancel, onStarted }: {
   onStarted: (accountId: number) => void;
 }) {
   const codes = result.markets.map((m) => m.market);
-  const label = `${result.strategy.name}${settings.length ? " (" + settings.map((s) => s.split(" ").pop()).join("/") + ")" : ""}`;
+  const label = result.strategy.label ?? `${result.strategy.name}${settings.length ? " (" + settings.map((s) => s.split(" ").pop()).join("/") + ")" : ""}`;
   const suggested = `${label} basket ${result.timeframe}`.slice(0, 60);
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [target, setTarget] = useState("new");

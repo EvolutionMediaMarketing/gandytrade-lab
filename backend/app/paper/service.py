@@ -380,7 +380,10 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
         from .. import alerts
         from ..strategies.library import STRATEGIES
 
-        name = STRATEGIES[strategy].name if strategy in STRATEGIES else "Automatic run"
+        from ..models import AutoRun
+
+        run = db.get(AutoRun, auto_run_id) if auto_run_id else None
+        name = (STRATEGIES[strategy].label(run.params if run else None) if strategy in STRATEGIES else "Automatic run")
         alerts.notify(db, acct.user_id, "trades", alerts.opened_text(t, symbol, acct.name, name))
     db.commit()
     return t

@@ -172,7 +172,7 @@ def run(db: Session, req: Request) -> dict:
         "without leverage or financing.")})
     span = (result.timeline[-1] - result.timeline[0]) / (365.25 * 86400) if result.timeline else 0
     tweaked = [f"{p.label.split(' (')[0].lower()} {params[p.key]:g}" for p in strategy.params if params.get(p.key) != p.default]
-    shown_name = strategy.name + (f" ({', '.join(tweaked)})" if tweaked else "")
+    shown_name = strategy.label(params) if strategy.named_by_lengths else strategy.name + (f" ({', '.join(tweaked)})" if tweaked else "")
     headline = (f"Over {span:.1f} years, {shown_name} on {len(legs)} markets together turned "
                 f"£{start:,.2f} into £{m['final']:,.2f} ({m['returnPct']:+.1f}%) from {m['trades']} trades, after "
                 f"£{m['costs']:,.2f} of costs. Holding the basket gave {hm['returnPct']:+.1f}%; "
@@ -183,7 +183,7 @@ def run(db: Session, req: Request) -> dict:
         d["symbol"] = getattr(t, "symbol", "")
         trades.append(d)
     return {
-        "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
+        "strategy": {"key": strategy.key, "name": strategy.name, "label": strategy.label(params), "params": params},
         "timeframe": tf.code, "mode": mode, "direction": direction, "startBalance": start,
         "maxOpenRiskPct": open_limit, "riskPct": risk.risk_pct, "keptGoing": bool(req.keep_going),
         "monteCarlo": montecarlo.run(montecarlo.Inputs(

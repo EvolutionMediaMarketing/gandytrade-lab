@@ -90,7 +90,7 @@ def test_clean_record_and_breakdown(signed_in, account):
     p = _perf(signed_in, acct.id)
     assert p["feedback"][-1]["title"] in ("No bad habits spotted", "Rule score 100")
     labels = {b["label"] for b in p["breakdown"]}
-    assert labels == {"Your own trades", "20-day breakout"}
+    assert labels == {"Your own trades", "Breakout"}
     assert p["manual"]["trades"] == 6 and p["auto"]["trades"] == 6
 
 

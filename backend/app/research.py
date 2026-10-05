@@ -326,7 +326,7 @@ def scan_unit(db: Session, code: str, timeframe: str, strategy_key: str, cache: 
         bh_ratio = bh["returnPct"] / max(bh["maxDrawdownPct"], 1.0)
         rows.append({
             "market": symbol.code, "name": symbol.name, "assetClass": symbol.asset_class, "timeframe": tf.code,
-            "strategy": s.key, "strategyName": s.name, "direction": direction, "years": round(years, 1),
+            "strategy": s.key, "strategyName": s.label(s.clean_params({})), "direction": direction, "years": round(years, 1),
             "returnPct": m["returnPct"], "annualPct": m["annualPct"], "trades": m["trades"],
             "tradesPerYear": round(m["trades"] / years, 1) if years > 0 else None,
             "winRate": m["winRate"], "avgR": m["avgR"], "profitFactor": m["profitFactor"],

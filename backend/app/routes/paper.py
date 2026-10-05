@@ -332,7 +332,7 @@ def _run_dict(db: Session, run: AutoRun) -> dict:
     t = auto.open_trade_of(db, run)
     return {
         "id": run.id, "accountId": run.account_id, "symbol": run.symbol, "name": name, "timeframe": run.timeframe,
-        "strategy": run.strategy, "strategyName": s.name if s else run.strategy, "params": run.params or {},
+        "strategy": run.strategy, "strategyName": s.label(run.params) if s else run.strategy, "params": run.params or {},
         "direction": run.direction, "status": run.status, "createdAt": run.created_at.isoformat(),
         "lastCheckAt": run.last_check_at.isoformat() if run.last_check_at else None,
         "lastCandle": run.last_bar_ts, "message": run.last_message, "backtest": run.backtest or {},

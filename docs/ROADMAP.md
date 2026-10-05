@@ -49,7 +49,7 @@ Phase 2 turns the charts into a test bench: pick a strategy, run it on years of 
 | Part | What it does | Where it lives |
 | --- | --- | --- |
 | Strategy engine | One shared format for strategies (entry, exit, stop-loss rules, adjustable settings) used by every later phase | `backend/app/strategies/` |
-| Strategy library | 9 beginner strategies: buy and hold, moving-average crossover, trend pullback, RSI reversal, Bollinger bounce, 20-day breakout, MACD momentum, Ichimoku Cloud trend, support and resistance (manual) | `backend/app/strategies/library/` |
+| Strategy library | 9 beginner strategies: buy and hold, moving-average crossover, trend pullback, RSI reversal, Bollinger bounce, breakout (20/10 standard; named by its lengths, e.g. Breakout 55/20), MACD momentum, Ichimoku Cloud trend, support and resistance (manual) | `backend/app/strategies/library/` |
 | Backtester | Runs a strategy over history bar by bar, with no look-ahead; models spreads, commission and slippage; real-shares or CFD mode (leverage, overnight financing, UK stamp duty on UK shares) | `backend/app/backtest/` |
 | Results report | Net profit in GBP, win rate, average win vs average loss, profit factor, maximum drawdown, longest losing run, number of trades, equity curve, every trade drawn on the chart | Backtest page |
 | Buy-and-hold comparison | Every result shown beside simply holding the market over the same period | Results report |

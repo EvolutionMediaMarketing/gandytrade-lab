@@ -367,7 +367,7 @@ def step(db: Session, run: AutoRun) -> str:
         try:
             new = paper.place(db, acct, symbol.code, side, stop, target, tf.code, source="auto", strategy=strategy.key,
                               auto_run_id=run.id,
-                              reason=f"Automatic: {strategy.name} on the {label}. All entry conditions met.")
+                              reason=f"Automatic: {strategy.label(run.params)} on the {label}. All entry conditions met.")
             done.append(f"opened a {word} at {new.entry_price:.{symbol.precision}f}, stop-loss {stop:.{symbol.precision}f}"
                         + (f", target {target:.{symbol.precision}f}" if target is not None else ""))
         except paper.PaperError as exc:
@@ -421,7 +421,7 @@ def run_due(db: Session, last_looked: dict, now: float | None = None) -> set[int
             if run.errors >= MAX_ERRORS:
                 run.status = "paused"
                 run.last_message = f"Paused after {MAX_ERRORS} problems in a row. Last one: {exc}"[:255]
-                name = STRATEGIES[run.strategy].name if run.strategy in STRATEGIES else run.strategy
+                name = STRATEGIES[run.strategy].label(run.params) if run.strategy in STRATEGIES else run.strategy
                 alerts.notify(db, run.user_id, "problems",
                               f"Automatic run paused: {name} on {run.symbol}\n{run.last_message}\nResume it on the Paper page once it's sorted.")
         run.last_check_at = datetime.now(timezone.utc)
