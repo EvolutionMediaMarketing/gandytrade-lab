@@ -31,7 +31,7 @@ Phases 2 to 5 ship together at launch; real money comes after.
    - Gate: a backtest matches a hand-checked spreadsheet.
 2. **Phase 3 · Paper trading** (pretend money, live prices): manual and automatic paper trading, monthly top-ups; journal, dashboard, 12-week course, weekly review.
    - Gate: paper accounts run four weeks without errors.
-3. **Phase 4 · Practice** (practise and stress-test): market replay and a no-code strategy builder; walk-forward and Monte Carlo checks, alerts, economic calendar.
+3. **Phase 4 · Practice** (practise and stress-test): market replay and a no-code strategy builder; walk-forward and Monte Carlo checks, alerts, news and events (economic calendar, headlines).
    - Gate: an overfitted test strategy is labelled Reject.
 4. **Phase 5 · Graduation** (coach and the bar to clear): optional AI coach chat with a monthly spending cap; graduation checklist and Pine Script export.
    - Gate: phases 2 to 5 pass together.
@@ -76,17 +76,17 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 
 | Part | What it does | Where it lives |
 | --- | --- | --- |
-| Paper accounts | Pretend GBP balances, each set to real shares or CFD; any number of accounts, e.g. one per strategy | `backend/app/paper/` |
-| Manual paper trading | Buy or sell from the chart, with stop-loss and target, through the pre-trade checklist and risk guard | Trade panel on the chart |
-| Automatic forward tests (**done**) | A strategy trades a paper account on live prices with the same rules as the backtester; results shown beside the backtest's | Paper page, background worker |
+| Paper accounts (**done**) | Pretend GBP balances, each set to real shares or CFD; any number of accounts, e.g. one per strategy; delete with a typed confirmation | `backend/app/paper/` |
+| Manual paper trading (**done**) | Buy or sell from the chart, with stop-loss and target, through the pre-trade checklist and risk guard | Trade panel on the chart |
+| Automatic forward tests (**done**) | A strategy trades a paper account on live prices with the same rules as the backtester; results shown beside the backtest's; a tested basket starts on paper with one button; each run's trades open on the chart | Paper page, background worker |
 | Scalping strategies (**done**) | London open breakout, 5-minute trend pullback and 1-minute range fade, with UK session hours, profit targets and months of short-candle history; in Backtest, Research and automatic paper runs | Strategy library |
 | Monthly top-ups | Adds a fixed amount to a paper account each month, matching how the real pot will grow | Account settings |
-| Background worker | Fetches prices on schedule and fills paper orders, stops and targets | Separate container |
+| Background worker (**done**) | Fetches prices on schedule and fills paper orders, stops and targets | Separate container |
 | Trade journal | Notes, chart snapshot, reason for entry and a mood tag on every trade | Journal page |
 | Performance dashboard (**done**) | Equity curve, win rate, average win vs average loss, expectancy, drawdown, rule score, per account | Dashboard page |
 | Learning path | The 12-week course, unlocked week by week, each with short lessons, a quiz and one task in the app | Learn section |
-| Pre-trade checklist | Trend direction, stop-loss, position size and a one-sentence reason; the trade can't be placed until complete | Trade panel |
-| Rule score | Each trade scored on whether the plan was followed, separately from profit | Journal and dashboard |
+| Pre-trade checklist (**done**) | Trend direction, stop-loss, position size and a one-sentence reason; the trade can't be placed until complete | Trade panel |
+| Rule score (**done**) | Each trade scored on whether the plan was followed, separately from profit | Journal and dashboard |
 | Weekly review (**done**) | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
 | Automatic feedback (**done**) | Rule-based warnings, e.g. moving stops further away, trading more after losses, losses twice the size of wins | Dashboard |
 | Coach export (**done**) | One click copies a summary of a backtest or the week's trades and journal, ready for a coaching session with Claude | Dashboard and backtest pages |
@@ -114,7 +114,10 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 | Monte Carlo test | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
 | Robustness verdict | Labels each strategy: Reject / Watchlist / Incubate / Candidate, from multi-market, multi-timeframe, walk-forward and Monte Carlo results | Strategy pages |
 | Alerts (**Telegram done**) | Automatic trades opening and closing, stops and targets hit, runs or accounts pausing, backup problems, weekly research; price levels and signal setups still to come | Settings → Alerts |
-| Economic calendar | Upcoming interest-rate decisions, jobs and inflation reports that move forex, shown on the chart | Panel beside the chart |
+| Economic calendar | Upcoming interest-rate decisions, jobs and inflation reports, shown on the chart; a warning before placing a trade shortly before a high-impact event | Panel beside the chart, trade panel |
+| Event pause for automatic runs | Optional per run: no new entries in a window around high-impact events (open trades keep their stop-losses) | Automatic run settings |
+| Market headlines | Read-only recent headlines for the market on the chart, from a free source whose terms allow it, so you can see why a price moved | Panel beside the chart |
+| News alerts | A Telegram alert when a major story breaks about a market you hold a paper trade in | Settings → Alerts |
 
 **Gate:** a deliberately overfitted test strategy is correctly labelled Reject by the robustness checks.
 
@@ -125,6 +128,11 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 - [ ] Walk-forward and Monte Carlo results appear on every backtest
 - [ ] Alerts arrive by email and, if set up, Telegram
 - [ ] Economic calendar shows the coming week's major events
+- [ ] Headlines and news alerts work for markets you hold, and never open, close or change a trade
+
+**News is information, not a trade signal.** Free feeds arrive after prices have already moved, past news can't be
+backtested, and judging a headline would mean an AI making trade decisions. So nothing in this section places, closes or
+changes a trade; the only automatic effect is the optional event pause, which stops new entries and nothing else.
 
 ## Phase 5: AI coach, graduation and export
 
@@ -198,9 +206,9 @@ Phase 6 is built only after launch, ships switched off, and unlocks one strategy
 
 ## Open decisions
 
-- [ ] **Backup location:** which free off-server place nightly backups go to (needed before launch)
+- [x] **Backup location:** Backblaze B2, encrypted, nightly at 02:30 UTC with a test restore (see `docs/BACKUPS.md`)
 - [ ] **Graduation criteria:** keep the proposed defaults in phase 5, or make any stricter
 - [ ] **Seconds charts:** add 5, 10, 15 and 30-second timeframes for OANDA markets (viewing only), and whether to add a live tick chart
-- [ ] **Economic calendar source:** confirm a free data source during phase 4
+- [ ] **Economic calendar and headlines sources:** confirm free sources whose terms allow this use during phase 4 (each needs adding to the app's list of allowed web addresses)
 - [ ] **AI coach:** try it on your Claude plan's monthly credit first, or leave it switched off
 - [ ] **Before phase 6:** stay on the cPanel server or move the app to its own small server; choose a real-shares platform and whether to use a Stocks and Shares ISA
