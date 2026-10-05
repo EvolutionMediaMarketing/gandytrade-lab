@@ -231,6 +231,16 @@ def entry_block(acct: PaperAccount, equity: float) -> str:
 # --- Orders ------------------------------------------------------------------------------------
 
 @dataclass
+class Triggered:
+    """A price order whose level was reached: where and when, for the fill."""
+
+    mid: float
+    ts: int
+    spread: float | None
+    flags: list[str]
+    note: str
+
+@dataclass
 class OrderRequest:
     account_id: int
     symbol: str
@@ -269,9 +279,12 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
 
 def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, target: float | None, timeframe: str, *,
           trend: str = "", reason: str = "", mood: str = "", source: str = "manual", strategy: str = "",
-          auto_run_id: int | None = None) -> PaperTrade:
-    """Open a paper trade. Manual and automatic trades go through exactly the same safeguards:
-    the account's pause and daily loss limit, fresh prices, risk sizing, buying power and the open-risk limit."""
+          auto_run_id: int | None = None, order: "Triggered | None" = None) -> PaperTrade:
+    """Open a paper trade. Manual and automatic trades, and price orders, go through exactly the same safeguards:
+    the account's pause and daily loss limit, fresh prices, risk sizing, buying power and the open-risk limit.
+
+    `order` is set when a price order's level was reached: the trade fills at that level (or at the price it
+    jumped to, if it gapped past), not at whatever the price is when the worker gets round to it."""
     if side not in (1, -1):
         raise PaperError("Choose buy or short.")
     symbol = lookup(db, code)
@@ -287,14 +300,18 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
 
     q = latest_quote(db, symbol)
     check_fresh(q, symbol)
+    mid, quoted, spread = (order.mid, order.ts, order.spread) if order else (q.mid, q.ts, q.spread)
     book, conv = _book(db, symbol, acct.mode)
     buying = side > 0
-    fill = book.fill(q.mid, buying, q.spread)
+    fill = book.fill(mid, buying, spread)
     if (fill - stop) * side <= 0:
+        if order:
+            raise PaperError(f"The price jumped past your stop-loss as well as your order's level "
+                             f"(it reached {mid:.{symbol.precision}f}), so the trade wasn't opened.")
         raise PaperError("The stop-loss is on the wrong side of the current price. "
-                         f"The price is now about {q.mid:.{symbol.precision}f}.")
+                         f"The price is now about {mid:.{symbol.precision}f}.")
     if target is not None and (target - fill) * side <= 0:
-        if source == "auto":
+        if source == "auto" or order:
             target = None  # as in the backtester: the exit rule manages the trade instead
         else:
             raise PaperError("The target is on the wrong side of the current price.")
@@ -332,8 +349,8 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
         note = (f"Smaller than planned: the open-risk limit ({acct.max_open_risk_pct:g}% of the account) "
                 f"left room for £{room:,.2f} of risk.")
 
-    flags = []
-    if source == "manual":
+    flags = list(order.flags) if order else []
+    if source == "manual" and not order:
         if (side > 0 and trend == "down") or (side < 0 and trend == "up"):
             flags.append("Traded against the trend you identified")
         last_loss = db.scalar(select(PaperTrade).where(PaperTrade.account_id == acct.id, PaperTrade.status == "closed",
@@ -348,15 +365,17 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
     risk_gbp = units * abs(fill - stop) / rate
     t = PaperTrade(
         account_id=acct.id, symbol=symbol.code, timeframe=timeframe[:8], side=side, status="open",
-        units=units, entry_price=fill, entry_mid=q.mid, entry_quote_ts=q.ts, entry_rate=rate, entry_fees=fees,
+        units=units, entry_price=fill, entry_mid=mid, entry_quote_ts=quoted, entry_rate=rate, entry_fees=fees,
         stop=stop, initial_stop=stop, target=target, risk_gbp=risk_gbp, exit_reason="",
         last_checked_ts=_bar_index_ts(q), source=source, strategy=strategy[:40], trend=trend, reason=reason.strip()[:300],
         mood=mood[:20], notes="", lesson="", rule_flags=flags, rule_score=None, auto_run_id=auto_run_id,
     )
     db.add(t)
     db.flush()
-    db.add(PaperEvent(trade_id=t.id, kind="opened", price=fill, mid=q.mid, quote_ts=q.ts, quote_source=q.source,
-                      detail=_detail(note or ("sample prices" if q.sample else ""), q.spread)))
+    if order:
+        note = "; ".join(x for x in (order.note, note) if x)
+    db.add(PaperEvent(trade_id=t.id, kind="opened", price=fill, mid=mid, quote_ts=quoted, quote_source=q.source,
+                      detail=_detail(note or ("sample prices" if q.sample else ""), spread)))
     if source == "auto":
         from .. import alerts
         from ..strategies.library import STRATEGIES

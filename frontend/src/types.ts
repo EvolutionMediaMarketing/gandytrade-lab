@@ -702,3 +702,12 @@ export type WalkForward = { warnings: { level: string; text: string }[]; sample:
       checks: WalkForwardCheck[]; verdict: { key: "reject" | "watchlist" | "incubate" | "candidate"; label: string; text: string; passed: number; total: number };
       notes: string[]; headline: string; startBalance: number;
     });
+
+/** A paper order waiting for a price (backend: app/paper/orders.py). */
+export interface PriceOrder {
+  id: number; accountId: number; symbol: string; timeframe: string; side: "long" | "short";
+  kind: "Buy stop" | "Buy limit" | "Sell stop" | "Sell limit"; level: number; direction: "up" | "down";
+  stop: number; target: number | null; status: "waiting" | "filled" | "cancelled" | "expired" | "failed";
+  placedMid: number; precision: number; createdAt: string | null; expiresAt: string | null; finishedAt: string | null;
+  message: string; tradeId: number | null; reason: string; ruleFlags: string[];
+}

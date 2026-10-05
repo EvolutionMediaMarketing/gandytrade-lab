@@ -3,7 +3,7 @@ import { api } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
 import AutoPanel from "./AutoPanel";
-import type { AutoPrefill, Catalogue, PaperAccount, PaperEvent, PaperTrade, SymbolInfo } from "./types";
+import type { AutoPrefill, Catalogue, PaperAccount, PaperEvent, PaperTrade, PriceOrder, SymbolInfo } from "./types";
 import { useLivePrices } from "./useLivePrices";
 
 const REFRESH_MS = 30_000;
@@ -196,6 +196,9 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
               )}
             </div>
 
+            <PriceOrders key={`orders-${detail.id}`} accountId={detail.id} openCount={detail.open?.length ?? 0}
+              onAuthError={onAuthError} onFilled={() => { loadDetail(); loadAccounts(); }} />
+
             <AutoPanel key={detail.id} account={detail} catalogue={catalogue} favourites={favourites} onToggleFavourite={onToggleFavourite}
               onAuthError={onAuthError} onChanged={() => { loadDetail(); loadAccounts(); }}
               prefill={autoPrefill} onPrefillUsed={onPrefillUsed}
@@ -239,6 +242,69 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
       </section>
 
       {journal && <Journal trade={journal} onClose={() => setJournal(null)} onSaved={() => { loadDetail(); }} onAuthError={onAuthError} />}
+    </div>
+  );
+}
+
+const STATUS_WORD: Record<PriceOrder["status"], string> = {
+  waiting: "Waiting", filled: "Filled", cancelled: "Cancelled", expired: "Expired", failed: "Not filled",
+};
+
+/** Price orders on this account: waiting ones (with Cancel) and the most recent finished ones, with why. */
+function PriceOrders({ accountId, openCount, onAuthError, onFilled }: {
+  accountId: number; openCount: number; onAuthError: (err: unknown) => void; onFilled: () => void;
+}) {
+  const [orders, setOrders] = useState<{ waiting: PriceOrder[]; finished: PriceOrder[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    api.priceOrders({ account_id: accountId, done: true }).then(setOrders).catch(onAuthError);
+  }, [accountId, onAuthError]);
+  // Reload with the account (every 30 seconds), so an order that just filled moves to "finished".
+  useEffect(load, [load, openCount]);
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") load(); }, REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  if (!orders || (orders.waiting.length === 0 && orders.finished.length === 0)) return null;
+  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+  return (
+    <div className="card">
+      <h3>Price orders <span className="muted small">(placed from the chart's trade planner; the worker checks them every minute)</span></h3>
+      {error && <p className="warn stop">{error}</p>}
+      <div className="table-wrap">
+        <table className="trades">
+          <thead><tr><th>Market</th><th>Order</th><th className="num">At</th><th className="num">Stop</th><th className="num">Target</th>
+            <th>Status</th><th></th></tr></thead>
+          <tbody>
+            {[...orders.waiting, ...orders.finished].map((o) => (
+              <tr key={o.id}>
+                <td>{displayCode(o.symbol)}</td>
+                <td>{o.kind}</td>
+                <td className="num mono">{o.level.toFixed(o.precision)}</td>
+                <td className="num mono">{o.stop.toFixed(o.precision)}</td>
+                <td className="num mono">{o.target === null ? "–" : o.target.toFixed(o.precision)}</td>
+                <td>
+                  <b className={o.status === "filled" ? "up" : o.status === "failed" ? "down" : ""}>{STATUS_WORD[o.status]}</b>
+                  <span className="muted small-text"> {o.status === "waiting"
+                    ? (o.expiresAt ? `until ${date(o.expiresAt)}` : "until cancelled")
+                    : `${date(o.finishedAt)}${o.message ? ` · ${o.message}` : ""}`}</span>
+                </td>
+                <td>{o.status === "waiting" && (
+                  <button type="button" className="ghost small" onClick={() => {
+                    setError(null);
+                    api.cancelPriceOrder(o.id).then(load).catch((err) => {
+                      onAuthError(err);
+                      setError(err instanceof Error ? err.message : "Couldn't cancel it.");
+                      load();
+                      onFilled();
+                    });
+                  }}>Cancel</button>
+                )}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

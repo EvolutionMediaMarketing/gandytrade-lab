@@ -16,7 +16,7 @@ import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit, PriceOrder } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -246,6 +246,18 @@ export default function Workspace({ username, onSignedOut }: { username: string;
     setPlan(null);
   }, [prefs.symbol]);
 
+  // Paper price orders waiting on this market, drawn on the chart; refreshed every minute (the worker's pace).
+  const [priceOrders, setPriceOrders] = useState<PriceOrder[]>([]);
+  const loadOrders = useCallback(() => {
+    api.priceOrders({ symbol: prefs.symbol }).then((r) => setPriceOrders(r.waiting)).catch(() => setPriceOrders([]));
+  }, [prefs.symbol]);
+  useEffect(() => {
+    if (page !== "charts") return;
+    loadOrders();
+    const timer = window.setInterval(loadOrders, 60_000);
+    return () => window.clearInterval(timer);
+  }, [page, loadOrders]);
+
   useEffect(() => {
     if (panel === "plan" && plan === null) startPlan("long");
   }, [panel, plan, startPlan]);
@@ -453,14 +465,16 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? (
             <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan}
-              trade={shownTrade && data.symbol.code === shownTrade.symbol ? shownTrade : null} />
+              trade={shownTrade && data.symbol.code === shownTrade.symbol ? shownTrade : null}
+              orders={data.symbol.code === prefs.symbol ? priceOrders : []} />
           ) : !error && <div className="splash">Loading chart…</div>}
         </section>
 
         {panel === "plan" && data && (
           <aside className="panel" aria-label="Trade planner">
             <TradePlanner symbol={data.symbol} timeframe={prefs.timeframe} plan={plan} onPlanChange={setPlan} onStartFresh={startPlan}
-              onAuthError={handleAuth} onPlaced={() => undefined} />
+              onAuthError={handleAuth} onPlaced={loadOrders} lastPrice={livePrice?.mid ?? lastClose}
+              orders={priceOrders} onOrdersChanged={loadOrders} />
           </aside>
         )}
         {panel === "signals" && (

@@ -214,6 +214,41 @@ class PaperTrade(Base):
     auto_run_id: Mapped[int | None] = mapped_column(ForeignKey("auto_runs.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
+class PriceOrder(Base):
+    """A paper order waiting for a price: buy or sell when the market reaches a level you chose.
+
+    Rising to the level fills a buy stop (breakout) or a sell limit; falling to it fills a buy limit (dip)
+    or a sell stop. The worker checks it every minute like a stop-loss. When the level is reached the trade
+    opens through exactly the same safeguards as one you place yourself; if a safeguard refuses it then,
+    the order fails and says why.
+    """
+
+    __tablename__ = "price_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    timeframe: Mapped[str] = mapped_column(String(8), default="")
+    side: Mapped[int] = mapped_column(Integer)  # +1 buy, -1 sell (short)
+    level: Mapped[float] = mapped_column(Float)  # the price that triggers it
+    direction: Mapped[int] = mapped_column(Integer)  # +1: fills when the price rises to the level; -1: falls to it
+    stop: Mapped[float] = mapped_column(Float)
+    target: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(10), index=True)  # waiting | filled | cancelled | expired | failed
+    placed_mid: Mapped[float] = mapped_column(Float)  # the market price when the order was placed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_ts: Mapped[int] = mapped_column(BigInteger, default=0)  # newest finished candle checked
+    message: Mapped[str] = mapped_column(String(300), default="")  # why it filled, failed or was cancelled
+    trade_id: Mapped[int | None] = mapped_column(ForeignKey("paper_trades.id", ondelete="SET NULL"), nullable=True)
+    # The pre-trade checklist, filled in when the order was placed.
+    trend: Mapped[str] = mapped_column(String(10), default="")
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    mood: Mapped[str] = mapped_column(String(20), default="")
+    rule_flags: Mapped[list] = mapped_column(JSON, default=list)
+
+
 class PaperEvent(Base):
     """Every fill and change, with the market price recorded at that moment (the Phase 3 gate checks these)."""
 

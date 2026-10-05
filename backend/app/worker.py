@@ -24,7 +24,7 @@ from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
 from . import alerts, research, reviews
-from .paper import auto
+from .paper import auto, orders
 from .paper import service as paper
 
 log = logging.getLogger("gandytrade.worker")
@@ -32,6 +32,7 @@ LOOP_SECONDS = 60
 CHECK_EVERY = {"oanda": 60, "twelvedata": 600, "alphavantage": 6 * 3600}
 
 _stop = False
+_order_looked: dict[str, float] = {}  # when each market's waiting price orders were last checked
 
 
 def _handle_stop(*_args) -> None:
@@ -39,8 +40,8 @@ def _handle_stop(*_args) -> None:
     _stop = True
 
 
-def run_once(last_checked: dict[str, float], last_looked: dict | None = None) -> dict:
-    """One pass over every open paper trade. Returns counts, for the log and tests."""
+def run_once(last_checked: dict[str, float], last_looked: dict | None = None, order_looked: dict | None = None) -> dict:
+    """One pass over every open paper trade and waiting price order. Returns counts, for the log and tests."""
     db = new_session()
     stats = {"checked": 0, "closed": 0, "errors": 0}
     try:
@@ -77,6 +78,14 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None) ->
                     log.info("Closed paper trade %s on %s: %s", t.id, code, t.exit_reason)
                 touched_accounts.add(acct.id)
             db.commit()
+        # Price orders: fill any whose level was reached (after stops, so a freed-up risk allowance counts).
+        try:
+            got = orders.work(db, _order_looked if order_looked is None else order_looked, CHECK_EVERY)
+            stats["filled"] = got["filled"]
+        except Exception:
+            db.rollback()
+            log.exception("Price order pass failed")
+            stats["errors"] += 1
         # Automatic runs act on newly finished candles (after stops above, as in the backtester).
         try:
             touched_accounts |= auto.run_due(db, last_looked if last_looked is not None else {}, now)
@@ -136,7 +145,7 @@ def main() -> None:
     while not _stop:
         started = time.time()
         stats = run_once(last_checked, last_looked)
-        if stats["closed"] or stats["errors"]:
+        if stats["closed"] or stats["errors"] or stats.get("filled"):
             log.info("Pass: %s", stats)
         while not _stop and time.time() - started < LOOP_SECONDS:
             time.sleep(1)

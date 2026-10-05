@@ -77,6 +77,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Part | What it does | Where it lives |
 | --- | --- | --- |
 | Paper accounts (**done**) | Pretend GBP balances, each set to real shares or CFD; any number of accounts, e.g. one per strategy; delete with a typed confirmation | `backend/app/paper/` |
+| Price orders (**done**) | From the chart's trade planner, "when the price reaches my entry": buy stop / buy limit / sell stop / sell limit with a stop-loss and optional target and expiry; dotted lines on the chart; the worker fills them at the level (or the gap price) through the same safeguards, or fails them with an alert | Trade planner, Paper page, `backend/app/paper/orders.py` |
 | Manual paper trading (**done**) | Buy or sell from the chart, with stop-loss and target, through the pre-trade checklist and risk guard | Trade panel on the chart |
 | Automatic forward tests (**done**) | A strategy trades a paper account on live prices with the same rules as the backtester; results shown beside the backtest's; a tested basket starts on paper with one button; each run's trades open on the chart | Paper page, background worker |
 | Scalping strategies (**done**) | London open breakout, 5-minute trend pullback and 1-minute range fade, with UK session hours, profit targets and months of short-candle history; in Backtest, Research and automatic paper runs | Strategy library |
@@ -189,6 +190,7 @@ Phase 6 is built only after launch, ships switched off, and unlocks one strategy
 | Automatic mode | Unlocked per strategy after a month in confirm mode without a rule breach |
 | Limits in pounds | Maximum money per strategy, and maximum loss per day and per week; hitting one stops the strategy |
 | Broker-held stops | Every order is sent with its stop-loss attached, so it holds even if your server goes down |
+| Live price orders | The paper price orders carried over: sent to the broker as native stop or limit entry orders with the stop-loss attached, so the broker holds them. You confirm each order once when placing it, with the pounds at risk shown; it then fills at your price without asking again, still within the pound limits and the kill switch |
 | Kill switch | One button, and a Telegram command, close all live positions and switch the gateway off |
 | Health and drift checks | No new trades on stale prices or a dropped connection; live results compared with the paper twin, with a pause on large gaps |
 | Audit log | Every live order, approval and setting change recorded and uneditable |

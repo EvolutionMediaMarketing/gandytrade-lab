@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder,
 } from "./types";
 
 export class ApiError extends Error {
@@ -92,6 +92,12 @@ export const api = {
     }),
   placePaperTrade: (body: PaperOrder) =>
     request<{ trade: PaperTrade; note: string }>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
+  priceOrders: (q: { account_id?: number; symbol?: string; done?: boolean }) =>
+    request<{ waiting: PriceOrder[]; finished: PriceOrder[] }>(`/api/paper/price-orders?${new URLSearchParams(
+      Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
+  placePriceOrder: (body: Omit<PaperOrder, "side"> & { side: "long" | "short"; level: number; expiry: string }) =>
+    request<PriceOrder>("/api/paper/price-orders", { method: "POST", body: JSON.stringify(body) }),
+  cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
   changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string }) =>
     request<{ trade: PaperTrade }>(`/api/paper/trades/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   closePaperTrade: (id: number) => request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/close`, { method: "POST" }),

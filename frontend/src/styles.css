@@ -595,3 +595,11 @@ ul.plain { margin: 0; padding-left: 18px; }
 @media (max-width: 640px) {
   .verdict { flex-direction: column; gap: 4px; }
 }
+
+/* Waiting price orders in the trade planner */
+.waiting-orders { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.waiting-orders h3 { margin: 0 0 8px; font-size: 14px; }
+.waiting-orders ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.waiting-orders li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px;
+  padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius); border-left: 3px solid var(--amber); }
+.waiting-orders .small-text { margin: 0; }

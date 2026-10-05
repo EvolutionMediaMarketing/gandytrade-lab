@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (237 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0012.
+- Tests: `cd backend && python -m pytest -q` (259 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0013.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -30,6 +30,18 @@ has the full plan and `CLAUDE.md` the hard rules.
   per market on a new or chosen account in one go (all or nothing), optionally stopping old runs; max 10 runs at once.
   Each run lists its trades; click one to see it on the chart, or show all of a run's trades on one chart.
 - Dashboard with automatic feedback and coach export, weekly review, Telegram alerts.
+- **Walk-forward check and robustness verdict** (5 Oct 2026, `backend/app/backtest/walkforward.py`): a button on every
+  backtest result (one market and basket). History split into 9 stretches; tune on 3 (your settings, every length
+  ×0.5/×0.75/×1.5/×2, and the standard settings), trade the next unseen stretch, 6 times, balance carried forward. Seven
+  checks give Reject / Watchlist / Incubate / Candidate. Phase 4 gate passed: strategies tuned on random-walk prices are
+  rejected (`tests/test_walkforward.py`). Runs synchronously (about 60 backtests, a few seconds), one at a time.
+- **Price orders** (5 Oct 2026, `backend/app/paper/orders.py`, migration 0013): in the chart's trade planner, "When the
+  price reaches my entry" places a buy stop / buy limit / sell stop / sell limit on a paper account (the kind follows
+  where the entry line sits against the price), with expiry (until cancelled, end of day, end of week, 30 days). Dotted
+  amber lines on the chart; listed in the planner and on the Paper page with Cancel. The worker checks them each pass
+  (OANDA every minute), fills at the level or the gap price through `paper.place()` (all safeguards; sized on the balance
+  then), counts the trade as yours (`source="manual"`), and alerts on fill, failure or expiry. Paper only; live price
+  orders are in the Phase 6 plan (broker-held, confirmed once at placement).
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.
@@ -68,7 +80,8 @@ rules and costs (fills, spreads, stops).
 
 1. ~~Rerun the 55/20 basket backtest to read its Monte Carlo card~~ (done 5 Oct, figures above).
 2. Phase 3 remaining: monthly top-ups for paper accounts; the 12-week learning path.
-3. Phase 4: walk-forward check and robustness verdict; economic calendar (source to choose); market replay; strategy builder.
+3. Phase 4: ~~walk-forward check and robustness verdict~~ (done; run it on the 55/20 basket); economic calendar (source to
+   choose); market replay; strategy builder. Later: show each strategy's latest verdict on strategy pages.
 4. Before launch: health monitor, security review.
 
 ## Server incident, 5 October 2026 (not the app)

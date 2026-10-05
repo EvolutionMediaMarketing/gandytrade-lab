@@ -9,9 +9,9 @@ from ..db import get_session
 from ..deps import current_user
 from ..market.providers.base import ProviderError
 from ..market.directory import lookup
-from ..models import PaperAccount, PaperEvent, PaperTrade, User
+from ..models import PaperAccount, PaperEvent, PaperTrade, PriceOrder, User
 from .. import sessions
-from ..paper import auto
+from ..paper import auto, orders
 from ..paper import performance as perf
 from ..paper import service as paper
 from ..models import AutoRun
@@ -206,6 +206,62 @@ class OrderBody(BaseModel):
     reason: str = Field("", max_length=300)
     mood: str = Field("", max_length=20)
     confirmed: bool = False
+
+
+class PriceOrderBody(BaseModel):
+    account_id: int
+    symbol: str = Field(max_length=32)
+    side: str = Field(max_length=5)  # long | short
+    level: float = Field(gt=0)
+    stop: float = Field(gt=0)
+    target: float | None = Field(None, gt=0)
+    timeframe: str = Field("", max_length=8)
+    trend: str = Field("", max_length=10)
+    reason: str = Field("", max_length=300)
+    mood: str = Field("", max_length=20)
+    confirmed: bool = False
+    expiry: str = Field("gtc", max_length=8)
+
+
+def _precision(db: Session, code: str) -> int:
+    return _market(db, code)[0]
+
+
+@router.get("/price-orders")
+def list_price_orders(account_id: int | None = None, symbol: str | None = None, done: bool = False,
+                      db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    """Waiting price orders (and, with done=true, the 30 most recent finished ones) on your accounts."""
+    ids = [a.id for a in db.scalars(select(PaperAccount).where(PaperAccount.user_id == user.id))]
+    if account_id is not None:
+        ids = [i for i in ids if i == account_id]
+    q = select(PriceOrder).where(PriceOrder.account_id.in_(ids))
+    if symbol:
+        q = q.where(PriceOrder.symbol == symbol[:32])
+    waiting = db.scalars(q.where(PriceOrder.status == "waiting").order_by(PriceOrder.level.desc())).all()
+    finished = db.scalars(q.where(PriceOrder.status != "waiting").order_by(PriceOrder.id.desc()).limit(30)).all() if done else []
+    return {"waiting": [orders.order_dict(o, _precision(db, o.symbol)) for o in waiting],
+            "finished": [orders.order_dict(o, _precision(db, o.symbol)) for o in finished]}
+
+
+@router.post("/price-orders")
+def new_price_order(body: PriceOrderBody, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        if body.side not in ("long", "short"):
+            raise paper.PaperError("Choose buy or sell.")
+        o = orders.create(db, user, orders.OrderRequest(**{**body.model_dump(), "side": 1 if body.side == "long" else -1,
+                                                            "mood": body.mood if body.mood in MOODS else ""}))
+    except (paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return orders.order_dict(o, _precision(db, o.symbol))
+
+
+@router.post("/price-orders/{order_id}/cancel")
+def cancel_price_order(order_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        o = orders.cancel(db, user, order_id)
+    except paper.PaperError as exc:
+        raise _fail(exc) from exc
+    return orders.order_dict(o, _precision(db, o.symbol))
 
 
 @router.post("/orders")

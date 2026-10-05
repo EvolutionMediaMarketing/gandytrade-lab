@@ -110,6 +110,8 @@ interface ChartViewProps {
   onPlanChange?: (plan: TradePlan) => void;
   /** An open paper trade to show: its entry, stop-loss and target (not draggable). */
   trade?: ShownTrade | null;
+  /** Paper price orders waiting on this market: a dotted line at each order's level. */
+  orders?: { id: number; level: number; kind: string }[];
 }
 
 export interface ShownTrade {
@@ -140,7 +142,7 @@ export interface TradeMark {
   pnl?: number | null;
 }
 
-export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade }: ChartViewProps) {
+export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade, orders }: ChartViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const mainRef = useRef<ISeriesApi<SeriesType> | null>(null);
@@ -190,6 +192,22 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
   useEffect(() => {
     syncPlan();
   }, [plan, syncPlan]);
+
+  // Waiting price orders: one dotted amber line each, redrawn when the orders or the chart change.
+  const orderLinesRef = useRef<IPriceLine[]>([]);
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+  const syncOrders = useCallback(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    orderLinesRef.current.forEach((l) => main.removePriceLine(l));
+    orderLinesRef.current = (ordersRef.current ?? []).map((o) => main.createPriceLine({
+      price: o.level, color: "#fbbf24", lineWidth: 1, lineStyle: LineStyle.SparseDotted, axisLabelVisible: true, title: o.kind,
+    }));
+  }, []);
+  useEffect(() => {
+    syncOrders();
+  }, [orders, syncOrders]);
 
   // Live prices update the last candle in place (high, low and close), never older ones.
   useEffect(() => {
@@ -278,6 +296,7 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     mainRef.current = main;
     zonesRef.current = zones;
     linesRef.current = {};
+    orderLinesRef.current = [];
 
     // An open paper trade: fixed lines for its entry, stop-loss and target, and an arrow on its entry candle.
     const allMarkers: ChartMarker[] = [...(markers ?? [])];
@@ -463,6 +482,7 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     });
 
     syncPlan();
+    syncOrders();
 
     // Drag the plan's lines up and down. Grabbing within 7 pixels of a line picks it up.
     const el = host.current;

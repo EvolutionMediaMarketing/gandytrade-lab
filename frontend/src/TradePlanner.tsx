@@ -3,7 +3,7 @@ import { api, ApiError } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
 import type { TradePlan } from "./PlanZones";
-import type { OddsRow, PaperAccount, PositionSize, SymbolInfo, TargetOdds } from "./types";
+import type { OddsRow, PaperAccount, PositionSize, PriceOrder, SymbolInfo, TargetOdds } from "./types";
 
 const SETTINGS_KEY = "gt.plan.v1";
 type Mode = "" | "cash" | "cfd";
@@ -26,10 +26,16 @@ interface Props {
   onPlanChange: (plan: TradePlan | null) => void;
   onStartFresh: (side: "long" | "short") => void;
   onAuthError: (err: unknown) => void;
+  /** The latest price on the chart, to tell whether a price order buys a rise or a dip. */
+  lastPrice?: number | null;
+  /** Paper price orders waiting on this market. */
+  orders?: PriceOrder[];
+  onOrdersChanged?: () => void;
 }
 
 /** Plan a trade on the chart: drag the lines, see the size, the risk and the reward in pounds. */
-export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlanChange, onStartFresh, onAuthError }: Props) {
+export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlanChange, onStartFresh, onAuthError, lastPrice = null,
+  orders = [], onOrdersChanged }: Props) {
   const [settings, setSettings] = useState(loadSettings);
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);
@@ -184,13 +190,69 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
 
       <Checkout
         accounts={accounts} accountId={accountId} onAccount={setAccountId} symbol={symbol} timeframe={timeframe}
-        plan={plan} side={side} out={out} cashShort={cashShort}
+        plan={plan} side={side} out={out} cashShort={cashShort} lastPrice={lastPrice}
         onPlaced={() => {
           api.paperAccounts().then((r) => setAccounts(r.accounts.filter((a) => !a.archived))).catch(() => undefined);
           onPlaced();
         }}
         onAuthError={onAuthError}
       />
+
+      {orders.length > 0 && (
+        <WaitingOrders orders={orders} accounts={accounts} precision={p} onChanged={() => onOrdersChanged?.()} onAuthError={onAuthError} />
+      )}
+    </div>
+  );
+}
+
+/** Which kind of price order an entry line makes, given where the price is now. */
+export function orderKind(side: "long" | "short", entry: number, last: number | null): { kind: string; explain: string } | null {
+  if (last === null || !Number.isFinite(last) || Math.abs(entry - last) <= last * 1e-6) return null;
+  const up = entry > last;
+  if (side === "long") {
+    return up
+      ? { kind: "Buy stop", explain: "buys if the price rises to your entry: for catching a breakout" }
+      : { kind: "Buy limit", explain: "buys if the price falls to your entry: for buying a dip" };
+  }
+  return up
+    ? { kind: "Sell limit", explain: "sells short if the price rises to your entry: for selling into a bounce" }
+    : { kind: "Sell stop", explain: "sells short if the price falls to your entry: for catching a breakdown" };
+}
+
+const EXPIRIES = [
+  ["gtc", "Until I cancel it"], ["day", "End of today (10pm UK)"], ["week", "End of this week (Friday 10pm UK)"], ["month", "In 30 days"],
+];
+
+/** Price orders waiting on this market, with a way to cancel each. */
+function WaitingOrders({ orders, accounts, precision, onChanged, onAuthError }: {
+  orders: PriceOrder[]; accounts: PaperAccount[]; precision: number; onChanged: () => void; onAuthError: (err: unknown) => void;
+}) {
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const name = (id: number) => accounts.find((a) => a.id === id)?.name ?? "Paper account";
+  return (
+    <div className="waiting-orders">
+      <h3>Waiting price orders <span className="muted small-text">(dotted lines on the chart)</span></h3>
+      <ul>
+        {orders.map((o) => (
+          <li key={o.id}>
+            <span><b>{o.kind}</b> at <span className="mono">{o.level.toFixed(precision)}</span> · stop <span className="mono">{o.stop.toFixed(precision)}</span>
+              {o.target !== null && <> · target <span className="mono">{o.target.toFixed(precision)}</span></>}
+              <br /><span className="muted small-text">{name(o.accountId)}{o.expiresAt
+                ? ` · expires ${new Date(o.expiresAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                : " · until cancelled"}</span></span>
+            <button type="button" className="ghost small" disabled={busy === o.id}
+              onClick={() => {
+                setBusy(o.id);
+                setError(null);
+                api.cancelPriceOrder(o.id).then(onChanged)
+                  .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "Couldn't cancel it."); onChanged(); })
+                  .finally(() => setBusy(null));
+              }}>Cancel</button>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="warn stop">{error}</p>}
     </div>
   );
 }
@@ -201,11 +263,15 @@ const MOODS = [
 ];
 
 /** The pre-trade checklist. The order can't be placed until every item is done. */
-function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, side, out, cashShort, onPlaced, onAuthError }: {
+function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, side, out, cashShort, lastPrice, onPlaced, onAuthError }: {
   accounts: PaperAccount[]; accountId: number | null; onAccount: (id: number | null) => void; symbol: SymbolInfo;
   timeframe: string; plan: TradePlan; side: "long" | "short"; out: PositionSize | null; cashShort: boolean;
-  onPlaced: () => void; onAuthError: (err: unknown) => void;
+  lastPrice: number | null; onPlaced: () => void; onAuthError: (err: unknown) => void;
 }) {
+  const [when, setWhen] = useState<"now" | "level">("now");
+  const [expiry, setExpiry] = useState("gtc");
+  const priced = orderKind(side, plan.entry, lastPrice);
+  const atLevel = when === "level";
   const [open, setOpen] = useState(false);
   const [trend, setTrend] = useState("");
   const [reason, setReason] = useState("");
@@ -218,7 +284,7 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
 
   useEffect(() => {
     setConfirmed(false); // any change to the plan needs a fresh look
-  }, [plan.entry, plan.stop, plan.target, accountId]);
+  }, [plan.entry, plan.stop, plan.target, accountId, when]);
 
   const against = (side === "long" && trend === "down") || (side === "short" && trend === "up");
   const checks = [
@@ -228,12 +294,35 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
     { ok: reason.trim().length >= 10, text: "One-sentence reason written" },
     { ok: confirmed, text: "Size and £ at risk checked" },
   ];
-  const ready = checks.every((c) => c.ok) && !!out && !cashShort && !account?.block;
+  const ready = checks.every((c) => c.ok) && !!out && !cashShort && !account?.block && (!atLevel || !!priced);
 
   function place() {
     if (!account) return;
     setBusy(true);
     setError(null);
+    if (atLevel && priced) {
+      api
+        .placePriceOrder({
+          account_id: account.id, symbol: symbol.code, side, level: plan.entry, stop: plan.stop, target: plan.target, timeframe,
+          trend, reason: reason.trim(), mood, confirmed, expiry,
+        })
+        .then((o) => {
+          setDone(`${o.kind} order placed on “${account.name}” at ${o.level.toFixed(symbol.precision)}. The worker checks it every minute ` +
+            "and opens the trade when the price gets there, through the account's safeguards. It's the dotted line on the chart.");
+          setReason("");
+          setTrend("");
+          setMood("");
+          setConfirmed(false);
+          setOpen(false);
+          onPlaced();
+        })
+        .catch((err) => {
+          onAuthError(err);
+          setError(err instanceof Error ? err.message : "The order wasn't placed.");
+        })
+        .finally(() => setBusy(false));
+      return;
+    }
     api
       .placePaperTrade({
         account_id: account.id, symbol: symbol.code, side, stop: plan.stop, target: plan.target, timeframe,
@@ -281,6 +370,30 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
         </select>
       </label>
       {account?.block && <p className="warn stop">{account.block}</p>}
+
+      <div className="form-row">
+        <span className="field-label">When</span>
+        <div className="segmented wide" role="radiogroup" aria-label="When to trade">
+          <button type="button" className={!atLevel ? "on" : ""} onClick={() => setWhen("now")}>Now, at the live price</button>
+          <button type="button" className={atLevel ? "on" : ""} onClick={() => setWhen("level")}>When the price reaches my entry</button>
+        </div>
+        {atLevel && (priced ? (
+          <p className="note">
+            <b>{priced.kind}</b> at {plan.entry.toFixed(symbol.precision)}: {priced.explain}
+            {lastPrice !== null && <> (the price is {lastPrice.toFixed(symbol.precision)} now)</>}. Drag the entry line to change it.
+          </p>
+        ) : (
+          <p className="warn caution">Your entry is at the current price. Drag the entry line to the level you want, or trade now.</p>
+        ))}
+        {atLevel && (
+          <label className="form-row">
+            <span className="field-label">Expires</span>
+            <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+              {EXPIRIES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
       {account && !account.block && (
         <p className="muted small-text">
           At risk now on this account: {money(account.openRisk)} of {money(account.openRiskLimit)} allowed ({account.maxOpenRiskPct}%).
@@ -316,8 +429,8 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
       {out && (
         <label className="check-row confirm">
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-          I've checked it: {side === "long" ? "buy" : "short"} {out.units < 10 ? out.units.toFixed(4) : Math.floor(out.units).toLocaleString("en-GB")}{" "}
-          {displayCode(symbol.code)}, losing about {money(out.riskGbp)} if the stop-loss is hit.
+          I've checked it: {side === "long" ? "buy" : "short"} {atLevel ? "about " : ""}{out.units < 10 ? out.units.toFixed(4) : Math.floor(out.units).toLocaleString("en-GB")}{" "}
+          {displayCode(symbol.code)}{atLevel ? " if it fills" : ""}, losing about {money(out.riskGbp)} if the stop-loss is hit.
         </label>
       )}
 
@@ -328,11 +441,13 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
       {error && <p className="warn stop">{error}</p>}
       <div className="planner-actions">
         <button type="button" className="primary" disabled={!ready || busy} onClick={place}>
-          {busy ? "Placing…" : `Place paper ${side === "long" ? "buy" : "short"}`}
+          {busy ? "Placing…" : atLevel && priced ? `Place ${priced.kind.toLowerCase()} order` : `Place paper ${side === "long" ? "buy" : "short"}`}
         </button>
         <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
       </div>
-      <p className="muted small-text">It fills at the live price now (plus the usual spread), which may differ slightly from the entry line.</p>
+      <p className="muted small-text">{atLevel
+        ? "It fills at your entry, or at the price it jumped to if it gaps past (plus the usual spread), sized on the balance at that moment. If a safeguard refuses it then, nothing is traded and you get an alert saying why. Paper only."
+        : "It fills at the live price now (plus the usual spread), which may differ slightly from the entry line."}</p>
     </div>
   );
 }
