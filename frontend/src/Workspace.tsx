@@ -324,9 +324,15 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "paper" && (
         <PaperPage onAuthError={handleAuth}
-          onShowTrade={(t) => {
-            setShownTrade({ id: t.id, symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
-              entryTime: Math.floor(Date.parse(t.entryTime) / 1000), stop: t.stop, target: t.target });
+          onShowTrade={(t, opts) => {
+            const secs = (iso: string | null) => (iso ? Math.floor(Date.parse(iso) / 1000) : null);
+            const others = (opts?.others ?? []).map((o) => ({ id: o.id, side: o.side, entryTime: secs(o.entryTime)!,
+              exitTime: o.status === "closed" ? secs(o.exitTime) : null, pnl: o.status === "closed" ? o.pnl : o.unrealised ?? null }));
+            setShownTrade({ id: opts?.all ? -t.id : t.id, symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
+              entryTime: secs(t.entryTime)!, stop: t.stop, target: t.target,
+              exitPrice: t.status === "closed" ? t.exitPrice : null,
+              exitTime: t.status === "closed" ? secs(t.exitTime) : null,
+              pnl: t.pnl, exitReason: t.exitReason, others, allOnly: !!opts?.all, label: opts?.label });
             const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === t.timeframe);
             update(tfKnown ? { symbol: t.symbol, timeframe: t.timeframe } : { symbol: t.symbol });
             go("charts");
@@ -421,11 +427,23 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         <div key={i.id} className="banner info" role="status">{i.note}</div>
       ))}
       {error && <div className="banner error" role="alert">{error}</div>}
-      {shownTrade && data?.symbol.code === shownTrade.symbol && (
+      {shownTrade?.allOnly && data?.symbol.code === shownTrade.symbol && (
         <div className="banner info trade-banner" role="status">
-          Showing your paper {shownTrade.side === "long" ? "buy" : "short"} on {displayCode(shownTrade.symbol)}:
+          Showing all {shownTrade.others?.length ?? 0} trades of {shownTrade.label || "this automatic run"} on {displayCode(shownTrade.symbol)}:
+          blue arrows are entries, dots are exits (green made money, red lost), with each result beside it.{" "}
+          <button type="button" className="link-button" onClick={() => go("paper")}>Back to Paper</button>{" · "}
+          <button type="button" className="link-button" onClick={() => setShownTrade(null)}>Hide</button>
+        </div>
+      )}
+      {shownTrade && !shownTrade.allOnly && data?.symbol.code === shownTrade.symbol && (
+        <div className="banner info trade-banner" role="status">
+          {shownTrade.others && shownTrade.others.length > 1 ? `Trade ${(shownTrade.others.findIndex((o) => o.id === shownTrade.id) + 1) || ""} of ${shownTrade.others.length} from this run (the others are marked too). ` : ""}
+          Showing your {shownTrade.exitPrice != null ? "closed " : ""}paper {shownTrade.side === "long" ? "buy" : "short"} on {displayCode(shownTrade.symbol)}:
           entry {shownTrade.entryPrice.toFixed(data.symbol.precision)}, stop-loss {shownTrade.stop.toFixed(data.symbol.precision)}
-          {shownTrade.target !== null ? `, target ${shownTrade.target.toFixed(data.symbol.precision)}` : ", no target"}.{" "}
+          {shownTrade.target !== null ? `, target ${shownTrade.target.toFixed(data.symbol.precision)}` : ", no target"}
+          {shownTrade.exitPrice != null
+            ? `; closed at ${shownTrade.exitPrice.toFixed(data.symbol.precision)}${shownTrade.exitReason ? ` (${shownTrade.exitReason})` : ""}, ${(shownTrade.pnl ?? 0) >= 0 ? "+" : "−"}£${Math.abs(shownTrade.pnl ?? 0).toFixed(2)}`
+            : ""}.{" "}
           <button type="button" className="link-button" onClick={() => go("paper")}>Back to Paper</button>{" · "}
           <button type="button" className="link-button" onClick={() => setShownTrade(null)}>Hide</button>
         </div>

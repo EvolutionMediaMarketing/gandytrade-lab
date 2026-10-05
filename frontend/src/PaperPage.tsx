@@ -17,7 +17,7 @@ const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
 interface Props {
   onAuthError: (err: unknown) => void;
-  onShowTrade: (t: PaperTrade) => void;
+  onShowTrade: (t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) => void;
   catalogue: Catalogue | null;
   favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
@@ -199,7 +199,8 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
             <AutoPanel key={detail.id} account={detail} catalogue={catalogue} favourites={favourites} onToggleFavourite={onToggleFavourite}
               onAuthError={onAuthError} onChanged={() => { loadDetail(); loadAccounts(); }}
               prefill={autoPrefill} onPrefillUsed={onPrefillUsed}
-              accounts={accounts} onSwitchAccount={(id) => { setSelected(id); setJournal(null); loadAccounts(); }} />
+              accounts={accounts} onSwitchAccount={(id) => { setSelected(id); setJournal(null); loadAccounts(); }}
+              trades={[...(detail.open ?? []).map(withLive), ...(detail.closed ?? [])]} onShowTrade={onShowTrade} />
 
             <div className="card">
               <h3>Closed trades</h3>
@@ -218,7 +219,9 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
                           <td className={`num ${(t.pnl ?? 0) >= 0 ? "up" : "down"}`}>{money(t.pnl)}</td>
                           <td className="num">{t.r === null ? "–" : t.r.toFixed(2)}</td>
                           <td className={`num score s${Math.round(t.ruleScore / 25)}`}>{t.ruleScore}</td>
-                          <td>
+                          <td className="row-actions">
+                            <button type="button" className="ghost small" title="Show this trade on the chart"
+                              onClick={(e) => { e.stopPropagation(); onShowTrade(t); }}>Chart</button>
                             <button type="button" className={t.lesson ? "ghost small" : "small"} onClick={(e) => { e.stopPropagation(); setJournal(t); }}>
                               {t.lesson ? "Journal" : "Write journal"}
                             </button>

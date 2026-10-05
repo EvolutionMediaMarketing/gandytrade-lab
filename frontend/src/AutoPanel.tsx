@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import MarketPicker, { displayCode } from "./MarketPicker";
-import type { AutoOptions, AutoPrefill, AutoRun, Catalogue, PaperAccount, SymbolInfo } from "./types";
+import type { AutoOptions, AutoPrefill, AutoRun, Catalogue, PaperAccount, PaperTrade, SymbolInfo } from "./types";
 
 const JUDGE_AFTER = 30; // trades before paper results say much
 const REFRESH_MS = 60_000;
@@ -21,10 +21,14 @@ interface Props {
   onPrefillUsed: () => void;
   accounts: PaperAccount[];
   onSwitchAccount: (id: number) => void;
+  /** This account's trades (open and closed), to list under each run. */
+  trades: PaperTrade[];
+  onShowTrade: (t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) => void;
 }
 
 /** Automatic paper trading: strategies trading this paper account by their own rules. */
-export default function AutoPanel({ account, catalogue, favourites, onToggleFavourite, onAuthError, onChanged, prefill, onPrefillUsed, accounts, onSwitchAccount }: Props) {
+export default function AutoPanel({ account, catalogue, favourites, onToggleFavourite, onAuthError, onChanged, prefill, onPrefillUsed, accounts, onSwitchAccount,
+  trades, onShowTrade }: Props) {
   const [runs, setRuns] = useState<AutoRun[]>([]);
   const [options, setOptions] = useState<AutoOptions | null>(null);
   const [adding, setAdding] = useState(false);
@@ -71,7 +75,9 @@ export default function AutoPanel({ account, catalogue, favourites, onToggleFavo
       {error && <p className="warn stop">{error}</p>}
 
       {visible.length === 0 && !adding && <p className="muted">No automatic runs on this account yet.</p>}
-      {visible.map((run) => <RunCard key={run.id} run={run} onChange={change} />)}
+      {visible.map((run) => (
+        <RunCard key={run.id} run={run} onChange={change} trades={trades.filter((t) => t.autoRunId === run.id)} onShowTrade={onShowTrade} />
+      ))}
       {stoppedCount > 0 && (
         <button type="button" className="link-button small-text" onClick={() => setShowStopped((v) => !v)}>
           {showStopped ? "Hide" : "Show"} {stoppedCount} stopped run{stoppedCount === 1 ? "" : "s"}
@@ -95,7 +101,21 @@ export default function AutoPanel({ account, catalogue, favourites, onToggleFavo
   );
 }
 
-function RunCard({ run, onChange }: { run: AutoRun; onChange: (run: AutoRun, action: "pause" | "resume" | "stop") => void }) {
+const SHOW_TRADES = 8;
+
+function RunCard({ run, onChange, trades, onShowTrade }: {
+  run: AutoRun; onChange: (run: AutoRun, action: "pause" | "resume" | "stop") => void;
+  trades: PaperTrade[]; onShowTrade: (t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) => void;
+}) {
+  const [allTrades, setAllTrades] = useState(false);
+  // Open first, then the most recently closed.
+  const ordered = [...trades].sort((a, b) =>
+    (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) ||
+    Date.parse(b.exitTime ?? b.entryTime) - Date.parse(a.exitTime ?? a.entryTime));
+  const shown = allTrades ? ordered : ordered.slice(0, SHOW_TRADES);
+  const byTime = [...trades].sort((a, b) => Date.parse(a.entryTime) - Date.parse(b.entryTime));
+  const label = `${run.strategyName}${Object.keys(run.params ?? {}).length ? ` (${Object.values(run.params).join("/")})` : ""}`;
+  const showOne = (t: PaperTrade) => onShowTrade(t, { others: byTime, label });
   const bt = run.backtest;
   const lv = run.live;
   const caution = bt.returnPct !== undefined && (bt.returnPct <= 0 || (bt.buyHoldReturnPct !== undefined && bt.returnPct < bt.buyHoldReturnPct));
@@ -138,6 +158,39 @@ function RunCard({ run, onChange }: { run: AutoRun; onChange: (run: AutoRun, act
           : "Enough trades to compare: if average R is well below the backtest's, the backtest was probably too kind."}
         {" "}Before any real money: at least 3 months and 50 trades here, still ahead after costs.
       </p>
+      {trades.length > 0 && (
+        <div className="table-wrap">
+          <table className="trades auto-trades">
+            <caption className="muted small-text">
+              This run's trades: click one to see it on the chart, or{" "}
+              <button type="button" className="link-button" onClick={() => onShowTrade(byTime[byTime.length - 1], { others: byTime, all: true, label })}>
+                show all {trades.length} on one chart
+              </button>
+            </caption>
+            <thead><tr><th>Opened</th><th>Side</th><th>Entry</th><th>Status</th><th className="num">Profit</th><th className="num">R</th></tr></thead>
+            <tbody>
+              {shown.map((t) => {
+                const profit = t.status === "open" ? t.unrealised ?? null : t.pnl;
+                return (
+                  <tr key={t.id} className="clickable" title="Show this trade on the chart" onClick={() => showOne(t)}>
+                    <td><button type="button" className="link-button" onClick={(e) => { e.stopPropagation(); showOne(t); }}>{when(t.entryTime)}</button></td>
+                    <td>{t.side === "long" ? "Buy" : "Short"}</td>
+                    <td className="mono">{t.entryPrice.toFixed(Math.min(6, Math.max(2, t.precision ?? 5)))}</td>
+                    <td>{t.status === "open" ? <span className="tag go">Open</span> : <span className="muted">{t.exitReason || "Closed"} · {when(t.exitTime)}</span>}</td>
+                    <td className={`num ${(profit ?? 0) >= 0 ? "up" : "down"}`}>{profit === null || profit === undefined ? "–" : `£${profit.toFixed(2)}`}</td>
+                    <td className="num">{t.r === null || t.status === "open" ? "–" : t.r.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {ordered.length > SHOW_TRADES && (
+            <button type="button" className="link-button small-text" onClick={() => setAllTrades((v) => !v)}>
+              {allTrades ? "Show fewer" : `Show all ${ordered.length} trades`}
+            </button>
+          )}
+        </div>
+      )}
       {caution && <p className="warn caution small-text">The backtest of these rules {bt.returnPct! <= 0 ? "lost money" : "didn't beat simply buying and holding"}. Fine for learning, but don't expect it to do better on paper.</p>}
 
       {run.status !== "stopped" && (

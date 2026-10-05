@@ -120,6 +120,24 @@ export interface ShownTrade {
   entryTime: number; // Unix seconds
   stop: number;
   target: number | null;
+  /** Closed trades: where and when it closed, and the result (for the marker's colour). */
+  exitPrice?: number | null;
+  exitTime?: number | null;
+  pnl?: number | null;
+  exitReason?: string;
+  /** Other trades to mark (entry arrows, exit dots), e.g. the rest of an automatic run's trades. */
+  others?: TradeMark[];
+  /** Show only the marks for every trade, with no lines for one trade (an automatic run's whole history). */
+  allOnly?: boolean;
+  label?: string;
+}
+
+export interface TradeMark {
+  id: number;
+  side: "long" | "short";
+  entryTime: number;
+  exitTime?: number | null;
+  pnl?: number | null;
 }
 
 export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade }: ChartViewProps) {
@@ -162,7 +180,7 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     // With no plan, an open trade being shown is shaded instead, from the candle it was opened in.
     const n = data.bars.length;
     const t = tradeRef.current;
-    if (!p && t) {
+    if (!p && t && !t.allOnly && t.exitPrice == null) {  // closed trades: lines and markers only
       zones.setPlan({ entry: t.entryPrice, stop: t.stop, target: t.target }, entryBar(data.bars, t.entryTime)?.time ?? null);
     } else {
       zones.setPlan(p ?? null, n ? data.bars[Math.max(0, n - 40)].time : null);
@@ -263,7 +281,25 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
 
     // An open paper trade: fixed lines for its entry, stop-loss and target, and an arrow on its entry candle.
     const allMarkers: ChartMarker[] = [...(markers ?? [])];
-    if (trade) {
+    for (const m of trade?.others ?? []) {
+      if (trade && !trade.allOnly && m.id === trade.id) continue;
+      const entry = entryBar(data.bars, m.entryTime);
+      if (entry) {
+        allMarkers.push({
+          time: entry.time as Time, position: m.side === "long" ? "belowBar" : "aboveBar",
+          shape: m.side === "long" ? "arrowUp" : "arrowDown", color: "#93c5fd", text: trade?.allOnly ? "In" : "",
+        } as ChartMarker);
+      }
+      const exit = m.exitTime ? entryBar(data.bars, m.exitTime) : null;
+      if (exit) {
+        const won = (m.pnl ?? 0) >= 0;
+        allMarkers.push({
+          time: exit.time as Time, position: m.side === "long" ? "aboveBar" : "belowBar", shape: "circle",
+          color: won ? "#34d399" : "#f87171", text: trade?.allOnly ? `${won ? "+" : "−"}£${Math.abs(m.pnl ?? 0).toFixed(2)}` : "",
+        } as ChartMarker);
+      }
+    }
+    if (trade && !trade.allOnly) {
       const line = (price: number, color: string, title: string, style: LineStyle) =>
         main.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title });
       line(trade.entryPrice, "#93c5fd", trade.side === "long" ? "Your buy" : "Your short", LineStyle.Solid);
@@ -274,6 +310,15 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
         allMarkers.push({
           time: bar.time as Time, position: trade.side === "long" ? "belowBar" : "aboveBar",
           shape: trade.side === "long" ? "arrowUp" : "arrowDown", color: "#93c5fd", text: "Entry",
+        } as ChartMarker);
+      }
+      const exit = trade.exitTime ? entryBar(data.bars, trade.exitTime) : null;
+      if (exit && trade.exitPrice != null) {
+        const won = (trade.pnl ?? 0) >= 0;
+        line(trade.exitPrice, won ? "#34d399" : "#f87171", "Closed", LineStyle.Solid);
+        allMarkers.push({
+          time: exit.time as Time, position: trade.side === "long" ? "aboveBar" : "belowBar", shape: "circle",
+          color: won ? "#34d399" : "#f87171", text: "Exit",
         } as ChartMarker);
       }
     }
@@ -378,11 +423,24 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     const viewKey = `${data.symbol.code}|${data.timeframe}|${data.style}`;
     const saved = viewRef.current;
     const tradeBar = trade ? entryBar(data.bars, trade.entryTime) : null;
-    if (n > 0 && trade && framedTradeRef.current !== trade.id) {
+    if (n > 0 && trade?.allOnly && framedTradeRef.current !== trade.id) {
+      // A whole run: from a little before its first trade up to now.
+      framedTradeRef.current = trade.id;
+      const firsts = (trade.others ?? []).map((m) => entryBar(data.bars, m.entryTime)).filter((b) => b !== null);
+      const idx = firsts.length ? Math.min(...firsts.map((b) => data.bars.indexOf(b!))) : n - 60;
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, idx - 20), to: n + 6 });
+    } else if (n > 0 && trade && framedTradeRef.current !== trade.id) {
       // First look at this trade: from a little before its entry up to now.
       framedTradeRef.current = trade.id;
       const idx = tradeBar ? data.bars.indexOf(tradeBar) : n - 1;
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, Math.min(idx - 30, n - 60), n - 400), to: n + 6 });
+      const exitBar = trade.exitTime ? entryBar(data.bars, trade.exitTime) : null;
+      if (exitBar) {
+        // A closed trade: from a little before its entry to a little after its exit.
+        const end = data.bars.indexOf(exitBar);
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, idx - 30), to: Math.min(n + 6, Math.max(end + 30, idx + 60)) });
+      } else {
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, Math.min(idx - 30, n - 60), n - 400), to: n + 6 });
+      }
     } else if (n > 0 && focusTime !== undefined) {
       const idx = data.bars.findIndex((b) => b.time >= focusTime);
       const at = idx < 0 ? n - 1 : idx;
