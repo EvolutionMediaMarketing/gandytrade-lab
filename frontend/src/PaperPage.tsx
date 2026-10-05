@@ -23,11 +23,16 @@ interface Props {
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   autoPrefill: AutoPrefill | null;
   onPrefillUsed: () => void;
+  /** Open on this account (after starting a basket from the Backtest page). */
+  openAccount?: number | null;
+  onAccountOpened?: () => void;
 }
 
-export default function PaperPage({ onAuthError, onShowTrade, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed }: Props) {
+export default function PaperPage({ onAuthError, onShowTrade, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed,
+  openAccount, onAccountOpened }: Props) {
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(openAccount ?? null);
+  useEffect(() => { if (openAccount) onAccountOpened?.(); }, [openAccount, onAccountOpened]);
   const [detail, setDetail] = useState<PaperAccount | null>(null);
   const [journal, setJournal] = useState<PaperTrade | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -128,6 +128,17 @@ def create(db: Session, user: User, account_id: int, code: str, timeframe: str, 
     acct = paper.get_account(db, user, account_id)
     if acct.archived:
         raise AutoError("This paper account is archived.")
+    run = _prepare(db, user, acct, code, timeframe, strategy_key, params, direction)
+    db.add(run)
+    db.commit()
+    return run
+
+
+def _prepare(db: Session, user: User, acct: PaperAccount, code: str, timeframe: str, strategy_key: str,
+             params: dict | None, direction: str, *, stopping: frozenset[int] = frozenset(),
+             check_count: bool = True) -> AutoRun:
+    """Every check for a new run, and the run itself, not yet saved. `stopping` lists runs about to be
+    stopped in the same go, so they don't count as clashes."""
     symbol = lookup(db, code)
     strategy = get_strategy(strategy_key)
     if strategy.key in NOT_AUTOMATIC:
@@ -143,12 +154,13 @@ def create(db: Session, user: User, account_id: int, code: str, timeframe: str, 
     if strategy.intraday_only and tf.seconds > 900:
         raise AutoError(f"{strategy.name} only trades on 1 to 15-minute candles.")
     direction = "both" if direction == "both" and acct.mode == "cfd" and strategy.can_short else "long"
-    running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
-                                                                        AutoRun.status == "running"))
-    if running >= MAX_RUNNING:
-        raise AutoError(f"You can have up to {MAX_RUNNING} automatic runs going at once. Stop one first.")
+    if check_count:
+        running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
+                                                                            AutoRun.status == "running"))
+        if running >= MAX_RUNNING:
+            raise AutoError(f"You can have up to {MAX_RUNNING} automatic runs going at once. Stop one first.")
     clash = db.scalar(select(AutoRun).where(AutoRun.account_id == acct.id, AutoRun.symbol == symbol.code,
-                                            AutoRun.status != "stopped"))
+                                            AutoRun.status != "stopped", AutoRun.id.notin_(stopping or {0})))
     if clash is not None:
         raise AutoError(f"This account already has an automatic run on {symbol.name}. "
                         "Use a separate paper account to test another strategy on the same market, so their results don't mix.")
@@ -184,9 +196,49 @@ def create(db: Session, user: User, account_id: int, code: str, timeframe: str, 
                   params=clean, direction=direction, status="running", last_bar_ts=bars[-1].ts,
                   last_check_at=datetime.now(timezone.utc), errors=0, backtest=summary,
                   last_message="Started. Waiting for the next candle to finish; signals from before now are ignored.")
-    db.add(run)
-    db.commit()
     return run
+
+
+MAX_BASKET = 12
+
+
+def create_basket(db: Session, user: User, account_id: int, codes: list[str], timeframe: str, strategy_key: str,
+                  params: dict | None = None, direction: str = "long", stop_ids: list[int] | None = None) -> list[AutoRun]:
+    """One automatic run per market, all on one paper account, started together: either every run starts
+    or none does. Runs listed in stop_ids are stopped in the same go (their open trades keep their stop-losses)."""
+    acct = paper.get_account(db, user, account_id)
+    if acct.archived:
+        raise AutoError("This paper account is archived.")
+    codes = list(dict.fromkeys(c for c in codes if c))
+    if not 2 <= len(codes) <= MAX_BASKET:
+        raise AutoError(f"A basket needs 2 to {MAX_BASKET} markets.")
+    to_stop = [get_run(db, user, i) for i in dict.fromkeys(stop_ids or [])]
+    to_stop = [r for r in to_stop if r.status != "stopped"]
+    running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
+                                                                        AutoRun.status == "running"))
+    after = running - sum(1 for r in to_stop if r.status == "running") + len(codes)
+    if after > MAX_RUNNING:
+        raise AutoError(f"That would make {after} automatic runs, and the most at once is {MAX_RUNNING}. "
+                        "Stop some first, or tick them in the list to stop them as this basket starts.")
+    stopping = frozenset(r.id for r in to_stop)
+    # Check every market first (this downloads prices), so a problem with one starts nothing.
+    prepared = []
+    for code in codes:
+        try:
+            prepared.append(_prepare(db, user, acct, code, timeframe, strategy_key, params, direction,
+                                     stopping=stopping, check_count=False))
+        except (AutoError, ValueError, ProviderError) as exc:
+            db.rollback()
+            raise AutoError(f"Nothing was started. {exc}") from exc
+    for r in to_stop:
+        r = db.get(AutoRun, r.id, with_for_update=True, populate_existing=True)
+        r.status = "stopped"
+        r.last_message = ("Stopped when a new basket started. " +
+                          ("Its open trade stays open with its stop-loss; close it yourself when you're ready."
+                           if open_trade_of(db, r) else ""))
+    db.add_all(prepared)
+    db.commit()
+    return prepared
 
 
 def get_run(db: Session, user: User, run_id: int) -> AutoRun:

@@ -311,3 +311,34 @@ def test_account_list_counts_runs(signed_in, feed):
     signed_in.post(f"/api/paper/auto/{run['id']}", json={"action": "pause"})
     a = _accounts(signed_in)["cfd"]
     assert a["autoRunning"] == 0 and a["autoPaused"] == 1
+
+
+def test_basket_starts_all_or_nothing_and_can_stop_old_runs(signed_in, feed):
+    cfd = _accounts(signed_in)["cfd"]["id"]
+    old = _start(signed_in, cfd, symbol="EUR_USD").json()
+    other = signed_in.post("/api/paper/accounts", json={"name": "New basket", "starting_balance": 200, "mode": "cfd"}).json()["id"]
+    body = {"account_id": other, "markets": ["GBP_USD", "EUR_USD", "XAU_USD"], "timeframe": "1h",
+            "strategy": RULE.key, "params": {"n": 3}, "direction": "long"}
+    # One market that can't trade automatically: nothing starts.
+    bad = signed_in.post("/api/paper/auto/basket", json={**body, "markets": ["GBP_USD", "AAPL"], "timeframe": "5m"})
+    assert bad.status_code == 400 and bad.json()["detail"].startswith("Nothing was started")
+    assert signed_in.get(f"/api/paper/auto?account_id={other}").json()["runs"] == []
+    # Too many runs at once is refused before anything changes.
+    monkey_max = auto.MAX_RUNNING
+    auto.MAX_RUNNING = 3
+    try:
+        r = signed_in.post("/api/paper/auto/basket", json=body)
+        assert r.status_code == 400 and "most at once is 3" in r.json()["detail"]
+        # ...unless the old run is stopped in the same go.
+        r = signed_in.post("/api/paper/auto/basket", json={**body, "stop_run_ids": [old["id"]]})
+        assert r.status_code == 200, r.text
+    finally:
+        auto.MAX_RUNNING = monkey_max
+    runs = r.json()["runs"]
+    assert {x["symbol"] for x in runs} == {"GBP_USD", "EUR_USD", "XAU_USD"}
+    assert all(x["params"] == {"n": 3} and x["accountId"] == other and x["status"] == "running" for x in runs)
+    olds = signed_in.get(f"/api/paper/auto?account_id={cfd}").json()["runs"]
+    assert olds[0]["status"] == "stopped" and "new basket" in olds[0]["message"]
+    # The same basket again on the same account would mix results.
+    again = signed_in.post("/api/paper/auto/basket", json=body)
+    assert again.status_code == 400 and "Nothing was started" in again.json()["detail"]

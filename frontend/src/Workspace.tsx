@@ -102,6 +102,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [basketMode, setBasketMode] = useState(false);
   const [basketInit, setBasketInit] = useState<BasketInit | null>(null);
   const [autoPrefill, setAutoPrefill] = useState<AutoPrefill | null>(null);
+  const [paperOpen, setPaperOpen] = useState<number | null>(null);
   const [backtestInit, setBacktestInit] = useState<BacktestInit | undefined>();
 
   useEffect(() => {
@@ -318,7 +319,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "backtest" && basketMode && (
         <BasketPanel key={JSON.stringify(basketInit ?? {})} catalogue={catalogue} favourites={favourites}
-          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={basketInit} />
+          onToggleFavourite={toggleFavourite} onAuthError={handleAuth} initial={basketInit}
+          onStartedOnPaper={(id) => { setPaperOpen(id); go("paper"); }} />
       )}
       {page === "paper" && (
         <PaperPage onAuthError={handleAuth}
@@ -330,7 +332,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
             go("charts");
           }}
           catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite}
-          autoPrefill={autoPrefill} onPrefillUsed={() => setAutoPrefill(null)} />
+          autoPrefill={autoPrefill} onPrefillUsed={() => setAutoPrefill(null)}
+          openAccount={paperOpen} onAccountOpened={() => setPaperOpen(null)} />
       )}
       {page === "tools" && (
         <ToolsPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} onAuthError={handleAuth} />

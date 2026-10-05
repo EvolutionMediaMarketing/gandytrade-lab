@@ -323,6 +323,28 @@ def start_run(body: NewRun, db: Session = Depends(get_session), user: User = Dep
     return _run_dict(db, run)
 
 
+class NewBasketRuns(BaseModel):
+    account_id: int
+    markets: list[str] = Field(min_length=2, max_length=auto.MAX_BASKET)
+    timeframe: str = Field(max_length=4)
+    strategy: str = Field(max_length=40)
+    direction: str = Field("long", max_length=5)
+    params: dict[str, float] = Field(default_factory=dict)
+    stop_run_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+@router.post("/auto/basket")
+def start_basket(body: NewBasketRuns, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    if any(len(m) > 32 for m in body.markets):
+        raise HTTPException(status_code=400, detail="Unknown market.")
+    try:
+        runs = auto.create_basket(db, user, body.account_id, body.markets, body.timeframe, body.strategy,
+                                  body.params, body.direction, body.stop_run_ids)
+    except (auto.AutoError, paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return {"runs": [_run_dict(db, r) for r in runs]}
+
+
 class RunChange(BaseModel):
     action: str = Field(max_length=10)  # pause | resume | stop
     close_open: bool = False

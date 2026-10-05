@@ -3,7 +3,7 @@ import { api } from "./api";
 import { money } from "./BacktestPage";
 import EquityChart from "./EquityChart";
 import MarketPicker, { displayCode } from "./MarketPicker";
-import type { BasketInit, BasketResult, Catalogue, StrategiesResponse, SymbolInfo } from "./types";
+import type { AutoRun, BasketInit, BasketResult, Catalogue, PaperAccount, StrategiesResponse, SymbolInfo } from "./types";
 
 const TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w"];
 const YEARS = [{ v: 0, label: "All" }, { v: 3, label: "3 yrs" }, { v: 5, label: "5 yrs" }, { v: 10, label: "10 yrs" }];
@@ -17,10 +17,12 @@ interface Props {
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
   onAuthError: (err: unknown) => void;
   initial?: BasketInit | null;
+  /** After starting the basket on paper: show that paper account. */
+  onStartedOnPaper?: (accountId: number) => void;
 }
 
 /** One strategy on several markets at once, sharing one account and its safeguards. */
-export default function BasketPanel({ catalogue, favourites, onToggleFavourite, onAuthError, initial }: Props) {
+export default function BasketPanel({ catalogue, favourites, onToggleFavourite, onAuthError, initial, onStartedOnPaper }: Props) {
   const [info, setInfo] = useState<StrategiesResponse | null>(null);
   const [markets, setMarkets] = useState<string[]>(initial?.markets?.length ? initial.markets : DEFAULT_MARKETS);
   const [adding, setAdding] = useState("EUR_USD");
@@ -36,6 +38,7 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   const [result, setResult] = useState<BasketResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toPaper, setToPaper] = useState(false);
 
   useEffect(() => { api.strategies().then(setInfo).catch(onAuthError); }, [onAuthError]);
   const chosen = info?.strategies.find((s) => s.key === strategy);
@@ -48,7 +51,7 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
     setRunning(true);
     setError(null);
     api.runBasket({ markets, timeframe, strategy, params, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing })
-      .then(setResult)
+      .then((r) => { setResult(r); setToPaper(false); })
       .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "The basket test didn't run."); })
       .finally(() => setRunning(false));
   }
@@ -169,7 +172,14 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
                 Settings: {resultSettings.length ? `changed from standard: ${resultSettings.join(" · ")}` : "standard"}
               </p>
               <p className="headline">{result.headline}</p>
+              {!result.sample && !toPaper && (
+                <button type="button" className="primary" onClick={() => setToPaper(true)}>Run this basket on paper…</button>
+              )}
             </header>
+            {toPaper && (
+              <ToPaper result={result} settings={resultSettings} onAuthError={onAuthError} onCancel={() => setToPaper(false)}
+                onStarted={(id) => { setToPaper(false); onStartedOnPaper?.(id); }} />
+            )}
             {result.warnings.length > 0 && (
               <ul className="warnings">{result.warnings.map((w, i) => <li key={i} className={`warn ${w.level}`}>{w.text}</li>)}</ul>
             )}
@@ -226,6 +236,114 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
       <span className="stat-label">{label}</span>
       <span className={`stat-value ${tone === undefined ? "" : tone >= 0 ? "up" : "down"}`}>{value}</span>
       {sub && <span className="stat-sub muted">{sub}</span>}
+    </div>
+  );
+}
+
+/** Start the tested basket as automatic paper runs: one per market, on one paper account, with the same settings. */
+function ToPaper({ result, settings, onAuthError, onCancel, onStarted }: {
+  result: BasketResult; settings: string[]; onAuthError: (err: unknown) => void; onCancel: () => void;
+  onStarted: (accountId: number) => void;
+}) {
+  const codes = result.markets.map((m) => m.market);
+  const label = `${result.strategy.name}${settings.length ? " (" + settings.map((s) => s.split(" ").pop()).join("/") + ")" : ""}`;
+  const suggested = `${label} basket ${result.timeframe}`.slice(0, 60);
+  const [accounts, setAccounts] = useState<PaperAccount[]>([]);
+  const [target, setTarget] = useState("new");
+  const [name, setName] = useState("");
+  const [others, setOthers] = useState<AutoRun[]>([]);
+  const [stop, setStop] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Other automatic runs on these markets: offered for stopping, so old and new don't overlap.
+  useEffect(() => {
+    api.paperAccounts().then(async (r) => {
+      setAccounts(r.accounts.filter((a) => !a.archived && a.mode === "cfd"));
+      const lists = await Promise.all(r.accounts.filter((a) => a.autoRunning).map((a) => api.autoRuns(a.id).then((x) => x.runs)));
+      const found = lists.flat().filter((x) => x.status !== "stopped" && codes.includes(x.symbol));
+      setOthers(found);
+      setStop(new Set(found.filter((x) => x.strategy === result.strategy.key).map((x) => x.id)));
+    }).catch(onAuthError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const accountName = (id: number) => accounts.find((a) => a.id === id)?.name ?? "another account";
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    let made: PaperAccount | null = null;
+    try {
+      let accountId = Number(target);
+      if (target === "new") {
+        made = await api.newPaperAccount({ name: name.trim() || suggested, starting_balance: 200, mode: "cfd", risk_pct: result.riskPct });
+        accountId = made.id;
+      }
+      await api.startBasketRuns({ account_id: accountId, markets: codes, timeframe: result.timeframe, strategy: result.strategy.key,
+        direction: result.direction, params: result.strategy.params, stop_run_ids: [...stop] });
+      onStarted(accountId);
+    } catch (err) {
+      if (made) await api.deletePaperAccount(made.id, made.name).catch(() => undefined);  // don't leave an empty account behind
+      onAuthError(err);
+      setError(err instanceof Error ? err.message : "Couldn't start the basket.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>Run this basket on paper</h3>
+      <p className="muted small-text">
+        Starts {codes.length} automatic runs, one per market, all on one paper account: {result.strategy.name}
+        {settings.length ? ` (${settings.join(" · ")})` : " (standard settings)"}, {result.timeframe} candles,
+        {result.direction === "both" ? " buys and shorts" : " buys only"}. They trade only on candles that finish from now on,
+        with the account's safeguards (its risk per trade, the 10% open-risk limit, and the daily and drawdown limits).
+      </p>
+      <label className="form-row">
+        <span className="field-label">Paper account</span>
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="new">A new CFD account (£200) just for this basket (recommended)</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={String(a.id)}>
+              {a.name} ({a.openCount} open{a.autoRunning ? `, ${a.autoRunning} automatic run${a.autoRunning === 1 ? "" : "s"}` : ""})
+            </option>
+          ))}
+        </select>
+        <span className="muted small-text">A fresh account keeps this basket's results separate, so you can compare them with the backtest.</span>
+      </label>
+      {target === "new" && (
+        <label className="form-row">
+          <span className="field-label">New account name</span>
+          <input value={name} maxLength={60} placeholder={suggested} onChange={(e) => setName(e.target.value)} />
+        </label>
+      )}
+      {others.length > 0 && (
+        <div className="form-row">
+          <span className="field-label">Stop these automatic runs as the basket starts</span>
+          {others.map((r) => (
+            <label key={r.id} className="check-row">
+              <input type="checkbox" checked={stop.has(r.id)} onChange={(e) => {
+                const next = new Set(stop);
+                if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                setStop(next);
+              }} />
+              {displayCode(r.symbol)} · {r.strategyName}
+              {Object.keys(r.params ?? {}).length ? ` (${Object.values(r.params).join("/")})` : ""} · {r.timeframe} · {accountName(r.accountId)}
+              {r.openTradeId ? " · has an open trade" : ""}
+            </label>
+          ))}
+          <span className="muted small-text">Stopped runs make no new trades. An open trade keeps its stop-loss; close it yourself
+            on the Paper page when you're ready.</span>
+        </div>
+      )}
+      {error && <p className="form-error">{error}</p>}
+      <div className="planner-actions">
+        <button type="button" className="primary" disabled={busy} onClick={start}>
+          {busy ? "Starting…" : `Start ${codes.length} automatic runs`}
+        </button>
+        <button type="button" className="ghost" onClick={onCancel}>Cancel</button>
+      </div>
     </div>
   );
 }
