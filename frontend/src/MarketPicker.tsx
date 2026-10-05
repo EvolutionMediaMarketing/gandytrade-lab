@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
+import MarketInfoCard from "./MarketInfoCard";
 import type { SymbolInfo } from "./types";
 
 export const CLASS_LABELS: Record<string, string> = {
@@ -60,6 +61,9 @@ export default function MarketPicker({ value, current, popular, counts, favourit
   const wrap = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const [peek, setPeek] = useState<string | null>(null);  // the row whose details are shown beside the list
+  const [showInfo, setShowInfo] = useState(false);  // details of the chosen market (the ⓘ button)
+  const infoTimer = useRef<number | null>(null);
 
   const total = useMemo(() => Object.values(counts).reduce((a, b) => a + b, 0), [counts]);
   const favSet = useMemo(() => new Set(favourites.map((f) => f.code)), [favourites]);
@@ -163,6 +167,15 @@ export default function MarketPicker({ value, current, popular, counts, favourit
     }
   }
 
+  // Details follow the highlighted row after a short pause, so skimming the list doesn't load every row.
+  const activeCode = open ? items[active]?.symbol.code ?? null : null;
+  useEffect(() => {
+    setPeek(null);
+    if (!activeCode) return;
+    const t = window.setTimeout(() => setPeek(activeCode), 450);
+    return () => window.clearTimeout(t);
+  }, [activeCode]);
+
   let itemIndex = -1;
   const label = current && current.code === value ? current.name : "";
 
@@ -191,6 +204,26 @@ export default function MarketPicker({ value, current, popular, counts, favourit
         >
           {favSet.has(value) ? "★" : "☆"}
         </button>
+      )}
+      {value && (
+        <button
+          type="button"
+          className={`info-btn${showInfo ? " on" : ""}`}
+          title="About this market"
+          aria-label="About this market"
+          aria-expanded={showInfo}
+          onClick={() => setShowInfo((v) => !v)}
+          onMouseEnter={() => { infoTimer.current = window.setTimeout(() => setShowInfo(true), 300); }}
+          onMouseLeave={() => { if (infoTimer.current) window.clearTimeout(infoTimer.current); }}
+        >
+          ⓘ
+        </button>
+      )}
+      {showInfo && !open && (
+        <div className="info-pop" onMouseLeave={() => setShowInfo(false)}>
+          <button type="button" className="info-close" aria-label="Close" onClick={() => setShowInfo(false)}>×</button>
+          <MarketInfoCard code={value} full onAuthError={onAuthError} />
+        </div>
       )}
 
       {open && (
@@ -266,6 +299,11 @@ export default function MarketPicker({ value, current, popular, counts, favourit
           </ul>
           {results && results.length >= 60 && (
             <p className="list-foot muted">Showing the first 60. Type more to narrow it down.</p>
+          )}
+          {peek && (
+            <div className="info-side" aria-live="polite">
+              <MarketInfoCard key={peek} code={peek} full={false} onAuthError={onAuthError} />
+            </div>
           )}
         </div>
       )}

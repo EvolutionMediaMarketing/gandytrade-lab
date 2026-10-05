@@ -12,7 +12,7 @@ from ..deps import current_user
 from ..indicators.chart import build_chart, catalogue_json
 from ..market.providers.base import ProviderError
 from ..market.service import get_bars
-from ..market import directory
+from ..market import directory, info
 from ..market.symbols import SYMBOLS
 from ..market.timeframes import TIMEFRAMES, get_timeframe
 from ..models import User
@@ -100,3 +100,26 @@ def chart(body: ChartRequest, db: Session = Depends(get_session), _: User = Depe
         }
     )
     return data
+
+
+@router.get("/markets/info")
+def market_info(symbol: str = Query(max_length=32), full: bool = False,
+                db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    """Background for the hover card: what the market is, sector, a summary, saved headlines.
+    Information only; nothing here touches a trade."""
+    try:
+        sym = directory.lookup(db, symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return info.info(db, sym, full=full)
+
+
+@router.post("/markets/info/news")
+def market_news(symbol: str = Query(max_length=32), db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    try:
+        sym = directory.lookup(db, symbol)
+        return info.headlines(db, sym)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

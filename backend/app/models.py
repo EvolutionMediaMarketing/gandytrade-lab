@@ -68,6 +68,21 @@ class Instrument(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class MarketInfo(Base):
+    """Saved background on a market: company details, a Wikipedia summary and recent headlines.
+    Read-only information for the chart's hover card; never used for trading."""
+
+    __tablename__ = "market_info"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Alpha Vantage company overview (or an error)
+    profile_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wiki: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Wikipedia summary (or why there isn't one)
+    wiki_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    news: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # latest headlines (or an error)
+    news_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Favourite(Base):
     """A market you've starred. Stored on the server so it follows you between devices."""
 

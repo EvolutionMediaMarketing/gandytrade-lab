@@ -665,3 +665,17 @@ export type MonteCarlo =
       curve: { step: number[]; bands: Record<"5" | "25" | "50" | "75" | "95", number[]>; replay: number[] };
       summary: { level: "info" | "caution" | "stop"; text: string }[];
     };
+
+export interface MarketInfo {
+  code: string; name: string; assetClass: string; kind: string; exchange: string;
+  note: { text: string; drivers: string[]; wikiTitle: string | null } | null;
+  wiki: { title: string; description: string; extract: string; url: string } | { none: string } | { error: string } | null;
+  profile: {
+    name?: string; sector?: string; industry?: string; exchange?: string; country?: string; currency?: string; description?: string;
+    website?: string; marketCap?: number; peRatio?: number; dividendYield?: number; high52?: number; low52?: number; beta?: number;
+  } & { none?: string; error?: string } | null;
+  canProfile: boolean; canNews: boolean;
+  news: { items: { title: string; source: string; time: number; url: string }[] } | { none: string } | { error: string } | null;
+  newsAt: number | null;
+  allowanceLeft: number;
+}

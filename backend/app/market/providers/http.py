@@ -1,6 +1,7 @@
 """The only way the app talks to the internet: an HTTP client limited to an allowlist.
 
-Market data comes from three read-only services (OANDA's practice prices, Twelve Data and Alpha Vantage). Any request to another host, or
+Market data comes from three read-only services (OANDA's practice prices, Twelve Data and Alpha Vantage);
+Wikipedia supplies read-only background summaries. Any request to another host, or
 over plain HTTP, is refused before it leaves the app. Adding a host here is a
 deliberate, reviewed change; the live trading gateway (Phase 6) will have its
 own separate client, in its own container, on its own server.
@@ -16,6 +17,7 @@ ALLOWED_HOSTS = frozenset({
     "api.twelvedata.com",
     "www.alphavantage.co",
     "api.telegram.org",  # alerts to your own Telegram bot (sending messages only)
+    "en.wikipedia.org",  # read-only company and market summaries for the chart's hover card
 })
 
 

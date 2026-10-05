@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -47,6 +47,11 @@ export const api = {
   favourites: () => request<{ favourites: SymbolInfo[] }>("/api/favourites"),
   setFavourite: (code: string, on: boolean) =>
     request<{ favourites: SymbolInfo[] }>(`/api/favourites/${encodeURIComponent(code)}`, { method: on ? "PUT" : "DELETE" }),
+  marketInfo: (symbol: string, full: boolean, signal?: AbortSignal) =>
+    request<MarketInfo>(`/api/markets/info?${new URLSearchParams({ symbol, full: full ? "true" : "false" })}`, { signal }, true),
+  marketNews: (symbol: string) =>
+    request<{ news: MarketInfo["news"]; newsAt: number; allowanceLeft: number }>(
+      `/api/markets/info/news?${new URLSearchParams({ symbol })}`, { method: "POST" }),
   searchMarkets: (q: string, assetClass: string, signal?: AbortSignal) =>
     request<{ results: SymbolInfo[] }>(
       `/api/markets/search?${new URLSearchParams({ q, class: assetClass, limit: "60" })}`,
