@@ -202,11 +202,17 @@ def _prepare(db: Session, user: User, acct: PaperAccount, code: str, timeframe: 
 MAX_BASKET = 12
 
 
-def create_basket(db: Session, user: User, account_id: int, codes: list[str], timeframe: str, strategy_key: str,
-                  params: dict | None = None, direction: str = "long", stop_ids: list[int] | None = None) -> list[AutoRun]:
+def create_basket(db: Session, user: User, account_id: int | None, codes: list[str], timeframe: str, strategy_key: str,
+                  params: dict | None = None, direction: str = "long", stop_ids: list[int] | None = None,
+                  new_account_name: str = "", new_account_risk_pct: float = 1.0) -> list[AutoRun]:
     """One automatic run per market, all on one paper account, started together: either every run starts
-    or none does. Runs listed in stop_ids are stopped in the same go (their open trades keep their stop-losses)."""
-    acct = paper.get_account(db, user, account_id)
+    or none does. Runs listed in stop_ids are stopped in the same go (their open trades keep their stop-losses).
+    With no account_id, a new £200 CFD account is made for the basket, in the same go: if anything fails,
+    no account is left behind."""
+    if account_id is None:
+        acct = paper.new_account(db, user, new_account_name, 200.0, "cfd", new_account_risk_pct)  # saved only at the end
+    else:
+        acct = paper.get_account(db, user, account_id)
     if acct.archived:
         raise AutoError("This paper account is archived.")
     codes = list(dict.fromkeys(c for c in codes if c))
@@ -238,6 +244,11 @@ def create_basket(db: Session, user: User, account_id: int, codes: list[str], ti
         r.last_message = ("Stopped when a new basket started. " +
                           ("Its open trade stays open with its stop-loss; close it yourself when you're ready."
                            if open_trade_of(db, r) else ""))
+    if acct.id is None:
+        db.add(acct)
+        db.flush()
+        for run in prepared:
+            run.account_id = acct.id
     db.add_all(prepared)
     db.commit()
     return prepared

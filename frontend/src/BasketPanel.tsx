@@ -274,18 +274,14 @@ function ToPaper({ result, settings, onAuthError, onCancel, onStarted }: {
   async function start() {
     setBusy(true);
     setError(null);
-    let made: PaperAccount | null = null;
     try {
-      let accountId = Number(target);
-      if (target === "new") {
-        made = await api.newPaperAccount({ name: name.trim() || suggested, starting_balance: 200, mode: "cfd", risk_pct: result.riskPct });
-        accountId = made.id;
-      }
-      await api.startBasketRuns({ account_id: accountId, markets: codes, timeframe: result.timeframe, strategy: result.strategy.key,
+      // A new account is made by the server in the same go as the runs, so a failure never leaves one behind.
+      const r = await api.startBasketRuns({ account_id: target === "new" ? null : Number(target),
+        new_account_name: name.trim() || suggested, new_account_risk_pct: result.riskPct,
+        markets: codes, timeframe: result.timeframe, strategy: result.strategy.key,
         direction: result.direction, params: result.strategy.params, stop_run_ids: [...stop] });
-      onStarted(accountId);
+      onStarted(r.runs[0]?.accountId ?? Number(target));
     } catch (err) {
-      if (made) await api.deletePaperAccount(made.id, made.name).catch(() => undefined);  // don't leave an empty account behind
       onAuthError(err);
       setError(err instanceof Error ? err.message : "Couldn't start the basket.");
     } finally {

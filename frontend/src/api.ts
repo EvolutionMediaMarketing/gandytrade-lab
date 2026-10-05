@@ -100,7 +100,7 @@ export const api = {
     request<{ runs: AutoRun[] }>(`/api/paper/auto?${new URLSearchParams({ account_id: String(accountId) })}`, {}, background),
   startAutoRun: (body: { account_id: number; symbol: string; timeframe: string; strategy: string; direction: string; params?: Record<string, number> }) =>
     request<AutoRun>("/api/paper/auto", { method: "POST", body: JSON.stringify(body) }),
-  startBasketRuns: (body: { account_id: number; markets: string[]; timeframe: string; strategy: string; direction: string;
+  startBasketRuns: (body: { account_id: number | null; new_account_name?: string; new_account_risk_pct?: number; markets: string[]; timeframe: string; strategy: string; direction: string;
     params: Record<string, number>; stop_run_ids: number[] }) =>
     request<{ runs: AutoRun[] }>("/api/paper/auto/basket", { method: "POST", body: JSON.stringify(body) }),
   changeAutoRun: (id: number, action: "pause" | "resume" | "stop", closeOpen = false) =>

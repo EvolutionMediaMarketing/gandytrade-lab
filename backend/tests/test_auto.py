@@ -342,3 +342,22 @@ def test_basket_starts_all_or_nothing_and_can_stop_old_runs(signed_in, feed):
     # The same basket again on the same account would mix results.
     again = signed_in.post("/api/paper/auto/basket", json=body)
     assert again.status_code == 400 and "Nothing was started" in again.json()["detail"]
+
+
+def test_basket_new_account_is_made_only_if_everything_starts(signed_in, feed):
+    before = len(signed_in.get("/api/paper/accounts").json()["accounts"])
+    body = {"account_id": None, "new_account_name": "My basket", "markets": ["GBP_USD", "AAPL"], "timeframe": "5m",
+            "strategy": RULE.key, "direction": "long"}
+    bad = signed_in.post("/api/paper/auto/basket", json=body)
+    assert bad.status_code == 400 and "Nothing was started" in bad.json()["detail"]
+    assert len(signed_in.get("/api/paper/accounts").json()["accounts"]) == before  # no empty account left behind
+    ok = signed_in.post("/api/paper/auto/basket", json={**body, "markets": ["GBP_USD", "EUR_USD"], "timeframe": "1h"})
+    assert ok.status_code == 200, ok.text
+    accts = signed_in.get("/api/paper/accounts").json()["accounts"]
+    made = next(a for a in accts if a["name"] == "My basket")
+    assert all(r["accountId"] == made["id"] for r in ok.json()["runs"]) and made["mode"] == "cfd"
+    # The same name again is refused, rather than making a look-alike account.
+    again = signed_in.post("/api/paper/auto/basket", json={**body, "markets": ["GBP_USD", "EUR_USD"], "timeframe": "1h"})
+    assert again.status_code == 400 and "already have a paper account called" in again.json()["detail"]
+    dup = signed_in.post("/api/paper/accounts", json={"name": "my basket", "starting_balance": 200, "mode": "cfd"})
+    assert dup.status_code == 400

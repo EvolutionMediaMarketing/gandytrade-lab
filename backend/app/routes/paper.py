@@ -324,7 +324,9 @@ def start_run(body: NewRun, db: Session = Depends(get_session), user: User = Dep
 
 
 class NewBasketRuns(BaseModel):
-    account_id: int
+    account_id: int | None = None  # None: make a new CFD account for the basket
+    new_account_name: str = Field("", max_length=60)
+    new_account_risk_pct: float = Field(1.0, ge=0.1, le=2.0)
     markets: list[str] = Field(min_length=2, max_length=auto.MAX_BASKET)
     timeframe: str = Field(max_length=4)
     strategy: str = Field(max_length=40)
@@ -339,7 +341,8 @@ def start_basket(body: NewBasketRuns, db: Session = Depends(get_session), user: 
         raise HTTPException(status_code=400, detail="Unknown market.")
     try:
         runs = auto.create_basket(db, user, body.account_id, body.markets, body.timeframe, body.strategy,
-                                  body.params, body.direction, body.stop_run_ids)
+                                  body.params, body.direction, body.stop_run_ids,
+                                  body.new_account_name, body.new_account_risk_pct)
     except (auto.AutoError, paper.PaperError, ValueError, ProviderError) as exc:
         raise _fail(exc) from exc
     return {"runs": [_run_dict(db, r) for r in runs]}

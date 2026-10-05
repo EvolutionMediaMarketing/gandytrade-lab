@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..backtest.costs import default_costs
@@ -96,15 +96,26 @@ def ensure_default_accounts(db: Session, user: User) -> None:
 
 
 def create_account(db: Session, user: User, name: str, balance: float, mode: str, risk_pct: float = 1.0) -> PaperAccount:
+    acct = new_account(db, user, name, balance, mode, risk_pct)
+    db.add(acct)
+    db.commit()
+    return acct
+
+
+def new_account(db: Session, user: User, name: str, balance: float, mode: str, risk_pct: float = 1.0) -> PaperAccount:
+    """A new paper account, checked but not yet saved."""
     if mode not in ("cash", "cfd"):
         raise PaperError("Choose real shares or CFD / spread bet.")
-    acct = PaperAccount(user_id=user.id, name=name.strip()[:60] or "Paper account", mode=mode,
+    name = name.strip()[:60] or "Paper account"
+    taken = db.scalar(select(PaperAccount.id).where(PaperAccount.user_id == user.id, PaperAccount.archived.is_(False),
+                                                    func.lower(PaperAccount.name) == name.lower()))
+    if taken is not None:
+        raise PaperError(f"You already have a paper account called \"{name}\". Choose another name.")
+    acct = PaperAccount(user_id=user.id, name=name, mode=mode,
                         starting_balance=balance, cash=balance, peak_equity=balance, deposits=0.0,
                         risk_pct=RiskSettings(risk_pct).cleaned().risk_pct, daily_loss_pct=3.0, max_drawdown_pct=20.0,
                         max_open_risk_pct=MAX_OPEN_RISK_PCT,
                         day="", day_start_equity=balance, halted=False, halt_reason="", archived=False)
-    db.add(acct)
-    db.commit()
     return acct
 
 
