@@ -37,8 +37,11 @@ fi
 chmod 600 "$CONF"/*.env
 
 # 2. Build the app image (first build downloads base images; allow a few minutes).
-echo "Building the app image..."
-podman build -t localhost/gandytrade-app:latest -f "$REPO/deploy/Containerfile" "$REPO"
+echo "Building the app image (at low priority, so the rest of the server isn't slowed down)..."
+# nice/ionice only lower this build's own priority; nothing server-wide changes.
+LOW=(nice -n 19)
+command -v ionice >/dev/null 2>&1 && LOW+=(ionice -c 3)
+"${LOW[@]}" podman build --jobs 1 -t localhost/gandytrade-app:latest -f "$REPO/deploy/Containerfile" "$REPO"
 ok "App image built"
 
 # 3. Resource caps, using only the controls this server hands to the app user
