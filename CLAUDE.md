@@ -1,7 +1,7 @@
 # GandyTrade Lab: notes for Claude
 
 Private, single-user beginner trading lab at https://gandytrade.co.uk (UK owner, GBP).
-Roadmap: `docs/ROADMAP.md`. Deployment: `docs/DEPLOY.md`.
+Current state and next steps: `docs/HANDOVER.md` (read first). Roadmap: `docs/ROADMAP.md`. Deployment: `docs/DEPLOY.md`.
 
 ## Hard rules
 - **No real-money order code** outside `backend/app/live/` (Phase 6 only). `tests/test_safety.py` enforces it.
