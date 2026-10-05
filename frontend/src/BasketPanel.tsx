@@ -261,9 +261,11 @@ function ToPaper({ result, settings, onAuthError, onCancel, onStarted }: {
     api.paperAccounts().then(async (r) => {
       setAccounts(r.accounts.filter((a) => !a.archived && a.mode === "cfd"));
       const lists = await Promise.all(r.accounts.filter((a) => a.autoRunning).map((a) => api.autoRuns(a.id).then((x) => x.runs)));
-      const found = lists.flat().filter((x) => x.status !== "stopped" && codes.includes(x.symbol));
+      // Every run still going, those on this basket's markets first.
+      const found = lists.flat().filter((x) => x.status !== "stopped")
+        .sort((a, b) => Number(codes.includes(b.symbol)) - Number(codes.includes(a.symbol)));
       setOthers(found);
-      setStop(new Set(found.filter((x) => x.strategy === result.strategy.key).map((x) => x.id)));
+      setStop(new Set(found.filter((x) => x.strategy === result.strategy.key && codes.includes(x.symbol)).map((x) => x.id)));
     }).catch(onAuthError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -330,10 +332,12 @@ function ToPaper({ result, settings, onAuthError, onCancel, onStarted }: {
               }} />
               {displayCode(r.symbol)} · {r.strategyName}
               {Object.keys(r.params ?? {}).length ? ` (${Object.values(r.params).join("/")})` : ""} · {r.timeframe} · {accountName(r.accountId)}
-              {r.openTradeId ? " · has an open trade" : ""}
+              {r.openTradeId ? " · has an open trade" : ""}{r.status === "paused" ? " · paused" : ""}
             </label>
           ))}
-          <span className="muted small-text">Stopped runs make no new trades. An open trade keeps its stop-loss; close it yourself
+          <span className="muted small-text">
+            {others.filter((r) => r.status === "running" && !stop.has(r.id)).length + codes.length} runs would be going
+            (the most at once is 10). Stopped runs make no new trades. An open trade keeps its stop-loss; close it yourself
             on the Paper page when you're ready.</span>
         </div>
       )}

@@ -216,10 +216,12 @@ def create_basket(db: Session, user: User, account_id: int, codes: list[str], ti
     to_stop = [r for r in to_stop if r.status != "stopped"]
     running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
                                                                         AutoRun.status == "running"))
-    after = running - sum(1 for r in to_stop if r.status == "running") + len(codes)
+    freed = sum(1 for r in to_stop if r.status == "running")
+    after = running - freed + len(codes)
     if after > MAX_RUNNING:
-        raise AutoError(f"That would make {after} automatic runs, and the most at once is {MAX_RUNNING}. "
-                        "Stop some first, or tick them in the list to stop them as this basket starts.")
+        raise AutoError(f"You have {running} automatic runs going. Stopping the {freed} ticked would leave "
+                        f"{running - freed}, and this basket adds {len(codes)}: {after} in all, but the most at once is "
+                        f"{MAX_RUNNING}. Tick {after - MAX_RUNNING} more to stop, or start a smaller basket.")
     stopping = frozenset(r.id for r in to_stop)
     # Check every market first (this downloads prices), so a problem with one starts nothing.
     prepared = []
@@ -263,6 +265,10 @@ def change(db: Session, user: User, run_id: int, action: str, close_open: bool =
     if action == "resume":
         if run.status == "running":
             return run
+        running = db.scalar(select(func.count()).select_from(AutoRun).where(AutoRun.user_id == user.id,
+                                                                            AutoRun.status == "running"))
+        if running >= MAX_RUNNING:
+            raise AutoError(f"You already have {MAX_RUNNING} automatic runs going, the most at once. Stop one first.")
         symbol = lookup(db, run.symbol)
         bars, _ = _finished_bars(db, symbol, get_timeframe(run.timeframe))
         run.status, run.errors = "running", 0

@@ -328,7 +328,7 @@ def test_basket_starts_all_or_nothing_and_can_stop_old_runs(signed_in, feed):
     auto.MAX_RUNNING = 3
     try:
         r = signed_in.post("/api/paper/auto/basket", json=body)
-        assert r.status_code == 400 and "most at once is 3" in r.json()["detail"]
+        assert r.status_code == 400 and "but the most at once is 3" in r.json()["detail"]
         # ...unless the old run is stopped in the same go.
         r = signed_in.post("/api/paper/auto/basket", json={**body, "stop_run_ids": [old["id"]]})
         assert r.status_code == 200, r.text
