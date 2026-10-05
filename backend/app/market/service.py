@@ -21,6 +21,15 @@ DEEP_REFRESH_EVERY = timedelta(days=30)
 DEEP_DAYS = {"1m": 30, "5m": 183, "15m": 365, "30m": 365}
 MAX_PAGES = 25
 SPREADS_SINCE = datetime(2026, 10, 2, 16, 30, tzinfo=timezone.utc)  # when bid/ask spreads started being recorded
+# The furthest back a download asks for. 5,000 weekly candles would reach back to the 1920s, and OANDA
+# refuses a request that starts before 1970, which left weekly and monthly tests on the last 500 candles.
+EARLIEST = datetime(2002, 1, 1, tzinfo=timezone.utc)
+
+
+def deep_count(tf: Timeframe, now: datetime | None = None) -> int:
+    """How many candles the full history download asks for: up to 5,000, never starting before 2002."""
+    now = now or datetime.now(timezone.utc)
+    return max(50, min(MAX_HISTORY, int((now - EARLIEST).total_seconds() // tf.seconds)))
 
 
 def history_cap(symbol: Symbol, tf: Timeframe) -> int:
@@ -145,8 +154,12 @@ def _refresh(db: Session, symbol: Symbol, tf: Timeframe, count: int, deep: bool,
         db.commit()
     except ProviderError as exc:
         db.rollback()
-        result.stale = True
-        result.warnings.append(str(exc))
+        if deep:
+            result.warnings.append(f"The full {tf.code} history for {symbol.name} didn't download ({exc}), so only "
+                                   "the prices already saved are used. It tries again next time.")
+        else:
+            result.stale = True
+            result.warnings.append(str(exc))
 
 
 def _missing_spreads(symbol: Symbol, tf: Timeframe, deep_at: datetime | None) -> bool:
@@ -216,7 +229,7 @@ def get_history(db: Session, symbol: Symbol, tf: Timeframe, limit: int | None = 
         result = _sample(symbol, tf, min(limit, MAX_HISTORY) + 1)
     else:
         result = BarsResult(bars=[], source=symbol.provider)
-        _refresh(db, symbol, tf, MAX_HISTORY, deep=True, result=result)
+        _refresh(db, symbol, tf, deep_count(tf), deep=True, result=result)
         _refresh(db, symbol, tf, 500, deep=False, result=result)
         result = _finish(db, symbol, tf, limit + 1, result)
     now = datetime.now(timezone.utc).timestamp()

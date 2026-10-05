@@ -2,6 +2,7 @@
 each market traded alone and with simply holding the whole basket."""
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -65,6 +66,8 @@ def run(db: Session, req: Request) -> dict:
             warnings.append({"level": "caution", "text": f"{symbol.name} left out: only {len(hist.bars)} candles of history."})
             continue
         sample = sample or hist.sample
+        if not hist.sample:
+            warnings.extend({"level": "caution", "text": f"{symbol.name}: {w}"} for w in hist.warnings)
         loaded.append((symbol, hist.bars))
     if len(loaded) < 2:
         raise ValueError("Fewer than two of those markets have enough history on this timeframe.")
@@ -72,6 +75,13 @@ def run(db: Session, req: Request) -> dict:
     # Test over the period every market covers, so they're compared fairly.
     first = max(bars[0].ts for _, bars in loaded)
     last = min(bars[-1].ts for _, bars in loaded)
+    latest_start = max(loaded, key=lambda x: x[1][0].ts)
+    earliest_start = min(b[0].ts for _, b in loaded)
+    if first - earliest_start > 365 * 86400 and not (req.years and req.years > 0):
+        when = datetime.fromtimestamp(first, tz=timezone.utc).strftime("%B %Y")
+        warnings.append({"level": "info", "text": (
+            f"The test starts in {when} because {latest_start[0].name} has prices only from then "
+            f"({len(latest_start[1])} candles). Leave it out to test further back.")})
     if req.years and req.years > 0:
         first = max(first, last - req.years * 365.25 * 86400)
     legs = []

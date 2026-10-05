@@ -65,8 +65,14 @@ def fetch_candles(
 
     if resp.status_code == 401:
         raise ProviderError("OANDA rejected the token. Check it's a demo (practice) account token.")
-    if resp.status_code == 400 or resp.status_code == 404:
+    if resp.status_code == 404:
         raise ProviderError(f"OANDA doesn't offer {symbol.name} on this account.")
+    if resp.status_code == 400:
+        try:
+            detail = str(resp.json().get("errorMessage") or "")[:150]
+        except ValueError:
+            detail = ""
+        raise ProviderError(f"OANDA refused the request for {symbol.name}" + (f": {detail}" if detail else "."))
     if resp.status_code != 200:
         raise ProviderError(f"OANDA returned an error ({resp.status_code}).")
 

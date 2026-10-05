@@ -257,3 +257,35 @@ def test_oanda_spread_parsing():
     assert _spread({"o": "1.1000", "c": "1.1002"}, {"o": "1.1001", "c": "1.1005"}) == pytest.approx(0.0003)
     assert _spread(None, {"o": "1"}) is None
     assert _spread({"o": "1.2", "c": "1.2"}, {"o": "1.1", "c": "1.1"}) is None  # crossed: ignore
+
+
+def test_weekly_history_never_asks_for_candles_before_2002(client, monkeypatch):
+    """5,000 weekly candles would start in the 1920s, which OANDA refuses: the full download is capped."""
+    from datetime import datetime, timezone
+
+    from app.db import new_session
+    from app.market import service
+    from app.market.directory import lookup
+    from app.market.providers.base import ProviderError
+    from app.market.timeframes import get_timeframe
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    asked = []
+
+    def fake_fetch(token, symbol, tf, count, client=None, start=None):
+        asked.append(count)
+        if now - count * tf.seconds < 0:
+            raise ProviderError("OANDA refused the request")
+        return [Bar(now - (count - i) * tf.seconds, 1, 1, 1, 1, 0) for i in range(count)]
+
+    monkeypatch.setattr(service.oanda, "fetch_candles", fake_fetch)
+    monkeypatch.setattr(service, "_provider_key", lambda symbol: "token")
+    week = get_timeframe("1w")
+    assert 1200 < service.deep_count(week) < 1400
+    assert 250 < service.deep_count(get_timeframe("1M")) < 350
+    assert service.deep_count(get_timeframe("1d")) == service.MAX_HISTORY
+    db = new_session()
+    result = service.get_history(db, lookup(db, "XAU_USD"), week)
+    db.close()
+    assert asked[0] == service.deep_count(week)
+    assert len(result.bars) > 1000 and not result.warnings
