@@ -110,22 +110,22 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 | --- | --- | --- |
 | Market replay | Pick a past date, hide the future, and step through bar by bar, placing paper trades as if live; scored at the end | Replay page |
 | No-code strategy builder | Build rules from blocks, e.g. "when RSI is below 30 and price is above the 200 EMA, buy; stop 2 x ATR below"; saved strategies work everywhere a library strategy does | Builder page |
-| Walk-forward test | Tunes settings on one stretch of history and checks them on the next, unseen stretch, repeated across the data | Backtest page |
-| Monte Carlo test | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
-| Robustness verdict | Labels each strategy: Reject / Watchlist / Incubate / Candidate, from multi-market, multi-timeframe, walk-forward and Monte Carlo results | Strategy pages |
+| Walk-forward test (**done**) | Tunes settings on one stretch of history and checks them on the next, unseen stretch, repeated across the data (9 stretches: tune on 3, trade the next, 6 times) | Backtest page, both tabs, on demand |
+| Monte Carlo test (**done**) | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
+| Robustness verdict (**done on the Backtest page**) | Labels each strategy: Reject / Watchlist / Incubate / Candidate, from seven checks: unseen years profitable, edge kept from tuning, unseen stretches profitable, neighbouring settings, markets, Monte Carlo, enough trades | Walk-forward card; strategy pages later |
 | Alerts (**Telegram done**) | Automatic trades opening and closing, stops and targets hit, runs or accounts pausing, backup problems, weekly research; price levels and signal setups still to come | Settings → Alerts |
 | Economic calendar | Upcoming interest-rate decisions, jobs and inflation reports, shown on the chart; a warning before placing a trade shortly before a high-impact event | Panel beside the chart, trade panel |
 | Event pause for automatic runs | Optional per run: no new entries in a window around high-impact events (open trades keep their stop-losses) | Automatic run settings |
 | Market details and headlines (**done for the chart's hover card**) | Who a company is, its sector, size and a Wikipedia summary; what a currency, commodity, index or bond is and what moves it; recent headlines for US shares and funds (Alpha Vantage, at most 15 lookups a day so UK share prices keep some allowance) | ⓘ by the market name, and beside the market list |
 | News alerts | A Telegram alert when a major story breaks about a market you hold a paper trade in | Settings → Alerts |
 
-**Gate:** a deliberately overfitted test strategy is correctly labelled Reject by the robustness checks.
+**Gate:** a deliberately overfitted test strategy is correctly labelled Reject by the robustness checks. **Passed** (`tests/test_walkforward.py`: strategies tuned on pure random-walk prices are rejected; a trend-follower on trending prices is not).
 
 **Done when**
 
 - [ ] Market replay works on any market and timeframe with history
 - [ ] Builder strategies backtest, paper trade and feed the signal assistant like library strategies
-- [ ] Walk-forward and Monte Carlo results appear on every backtest
+- [x] Walk-forward and Monte Carlo results appear on every backtest (walk-forward on demand, a button on the result)
 - [ ] Alerts arrive by email and, if set up, Telegram
 - [ ] Economic calendar shows the coming week's major events
 - [ ] Headlines and news alerts work for markets you hold, and never open, close or change a trade

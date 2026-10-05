@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, type BasketRequest } from "./api";
 import { money } from "./BacktestPage";
 import EquityChart from "./EquityChart";
 import MonteCarloCard from "./MonteCarloCard";
+import WalkForwardCard from "./WalkForwardCard";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type { AutoRun, BasketInit, BasketResult, Catalogue, PaperAccount, StrategiesResponse, SymbolInfo } from "./types";
 
@@ -37,6 +38,8 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   const [keepGoing, setKeepGoing] = useState(false);
   const [allParams, setAllParams] = useState<Record<string, Record<string, number>>>({});
   const [result, setResult] = useState<BasketResult | null>(null);
+  const [lastBody, setLastBody] = useState<BasketRequest | null>(null);  // what produced the result on screen
+  const [runCount, setRunCount] = useState(0);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toPaper, setToPaper] = useState(false);
@@ -51,8 +54,10 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
   function run() {
     setRunning(true);
     setError(null);
-    api.runBasket({ markets, timeframe, strategy, params, direction, start_balance: balance, risk_pct: risk, max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing })
-      .then((r) => { setResult(r); setToPaper(false); })
+    const body: BasketRequest = { markets, timeframe, strategy, params, direction, start_balance: balance, risk_pct: risk,
+      max_open_risk_pct: openRisk, years, mode: "cfd", keep_going: keepGoing };
+    api.runBasket(body)
+      .then((r) => { setResult(r); setLastBody(body); setRunCount((n) => n + 1); setToPaper(false); })
       .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "The basket test didn't run."); })
       .finally(() => setRunning(false));
   }
@@ -200,6 +205,9 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
               limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
             <MonteCarloCard mc={result.monteCarlo} />
+            {lastBody && !result.sample && (
+              <WalkForwardCard key={runCount} run={() => api.walkForwardBasket(lastBody)} onAuthError={onAuthError} />
+            )}
             <div className="card">
               <h3>Each market</h3>
               <div className="table-wrap">

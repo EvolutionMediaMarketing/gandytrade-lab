@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward,
 } from "./types";
 
 export class ApiError extends Error {
@@ -33,6 +33,11 @@ async function request<T>(path: string, init: RequestInit = {}, background = fal
     throw new ApiError(res.status, detail);
   }
   return data as T;
+}
+
+export interface BasketRequest {
+  markets: string[]; timeframe: string; strategy: string; params: Record<string, number>; direction: string; start_balance: number;
+  risk_pct: number; max_open_risk_pct: number; years: number; mode: string; keep_going: boolean;
 }
 
 export const api = {
@@ -129,8 +134,11 @@ export const api = {
   saveReview: (week: string, body: { answers: Record<string, string>; focus: string; complete: boolean }) =>
     request<WeeklyReview>(`/api/reviews/${week}`, { method: "PUT", body: JSON.stringify(body) }),
   reviewCoach: (week: string) => request<{ text: string }>(`/api/reviews/${week}/coach`),
-  runBasket: (body: { markets: string[]; timeframe: string; strategy: string; params: Record<string, number>; direction: string; start_balance: number;
-    risk_pct: number; max_open_risk_pct: number; years: number; mode: string; keep_going: boolean }) =>
+  runBasket: (body: BasketRequest) =>
     request<BasketResult>("/api/backtests/basket", { method: "POST", body: JSON.stringify(body) }),
+  walkForward: (body: BacktestRequest) =>
+    request<WalkForward>("/api/backtests/walkforward", { method: "POST", body: JSON.stringify(body) }),
+  walkForwardBasket: (body: BasketRequest) =>
+    request<WalkForward>("/api/backtests/basket/walkforward", { method: "POST", body: JSON.stringify(body) }),
   deleteBacktest: (id: number) => request<{ ok: boolean }>(`/api/backtests/${id}`, { method: "DELETE" }),
 };

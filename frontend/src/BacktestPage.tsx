@@ -3,6 +3,7 @@ import { api } from "./api";
 import ChartView, { ChartMarker } from "./ChartView";
 import EquityChart from "./EquityChart";
 import MonteCarloCard from "./MonteCarloCard";
+import WalkForwardCard from "./WalkForwardCard";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type {
   BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, CostSettings, StrategiesResponse, SymbolInfo, AutoPrefill,
@@ -129,6 +130,7 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
   }, [strategy, form.timeframe]);
 
   const [keepGoing, setKeepGoing] = useState(false);
+  const [lastBody, setLastBody] = useState<BacktestRequest | null>(null);  // what produced the result on screen
 
   const run = useCallback(() => {
     if (!strategy) return;
@@ -143,6 +145,7 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
       .runBacktest(body)
       .then((r) => {
         setResult(r);
+        setLastBody(body);
         setFocus(undefined);
         api.backtests().then((x) => setRuns(x.runs)).catch(() => undefined);
       })
@@ -396,6 +399,9 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
                 limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
             <MonteCarloCard mc={result.monteCarlo} />
+            {lastBody && !result.sample && result.strategy.key !== "buy_hold" && (
+              <WalkForwardCard key={result.id} run={() => api.walkForward(lastBody)} onAuthError={onAuthError} />
+            )}
 
             <div className="card chart-card">
               <h3>Trades on the chart <span className="muted small">(latest 2,000 candles; click a trade below to jump to it)</span></h3>

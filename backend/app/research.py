@@ -40,7 +40,7 @@ from .market.timeframes import get_timeframe
 from .models import ResearchJob, User
 from .paper.auto import NOT_AUTOMATIC
 from .risk.guard import RiskSettings, leverage_cap
-from .strategies.base import Strategy
+from .strategies.base import LEVEL_KEYS, Strategy
 from .strategies.library import STRATEGIES
 
 log = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ BALANCE = 200.0
 WEEKLY_EVERY = timedelta(days=7)
 PASS_BUDGET_SECONDS = 20  # work per worker pass, so stop-loss checks are never held up for long
 CHECKS = ["profitable", "enoughTrades", "drawdown", "robust", "recent"]
-LEVELS = {"oversold", "exit_level", "rsi_level", "adx_max"}  # thresholds, not lengths: left alone by the robustness check
+LEVELS = LEVEL_KEYS  # thresholds, not lengths: left alone by the robustness check
 
 
 class ResearchError(ValueError):
@@ -93,18 +93,8 @@ def strategies() -> list[Strategy]:
 def variants(s: Strategy) -> list[dict]:
     """Shorter and longer versions of the default settings: every whole-number length × 0.75 and × 1.5."""
     base = s.clean_params({})
-    out = []
-    for factor in (0.75, 1.5):
-        changed = {}
-        for p in s.params:
-            if p.key not in LEVELS and not p.key.endswith("_hour") and float(p.step).is_integer() and float(p.default).is_integer() and p.default >= 2:
-                step = int(p.step) or 1
-                steps = p.default * factor / step  # stay on the setting's own steps, and always move off the default
-                scaled = max(step, (math.floor(steps) if factor < 1 else math.ceil(steps)) * step)
-                changed[p.key] = max(p.minimum, min(p.maximum, scaled))
-        if changed:
-            out.append(s.clean_params({**base, **changed}))
-    return out
+    out = [s.scaled(base, factor) for factor in (0.75, 1.5)]
+    return [v for v in out if v != base]
 
 
 # --- Jobs ------------------------------------------------------------------------------------------

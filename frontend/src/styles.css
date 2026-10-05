@@ -567,3 +567,31 @@ ul.plain { margin: 0; padding-left: 18px; }
 @media (max-width: 860px) {
   .info-side { display: none; }  /* no room beside the list: use the ⓘ button instead */
 }
+
+/* Walk-forward check: verdict colours follow the warning palette (stop / caution / info / accent). */
+.walk-forward { display: grid; gap: 12px; }
+.walk-forward > h3, .walk-forward > p { margin: 0; }
+.walk-forward h4 { margin: 4px 0 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.walk-forward .card.inner { background: var(--surface-2); }
+.verdict { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius); border-left: 4px solid; }
+.verdict p { margin: 0; }
+.verdict p + p { margin-top: 4px; }
+.verdict-label { font-size: 18px; font-weight: 600; min-width: 108px; }
+.verdict.reject { background: var(--danger-bg); border-color: var(--down); }
+.verdict.reject .verdict-label { color: var(--down); }
+.verdict.watchlist { background: var(--amber-bg); border-color: var(--amber); }
+.verdict.watchlist .verdict-label { color: var(--amber); }
+.verdict.incubate { background: var(--info-bg); border-color: #60a5fa; }
+.verdict.incubate .verdict-label { color: #93c5fd; }
+.verdict.candidate { background: rgba(52, 211, 153, 0.1); border-color: var(--accent); }
+.verdict.candidate .verdict-label { color: var(--accent); }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.checks li { display: grid; grid-template-columns: 22px 1fr; gap: 6px; align-items: baseline; }
+.check-mark { font-weight: 700; text-align: center; }
+.checks .pass .check-mark { color: var(--accent); }
+.checks .warn .check-mark { color: var(--amber); }
+.checks .fail .check-mark { color: var(--down); }
+.trades tr.highlight td { background: var(--surface-2); font-weight: 600; }
+@media (max-width: 640px) {
+  .verdict { flex-direction: column; gap: 4px; }
+}

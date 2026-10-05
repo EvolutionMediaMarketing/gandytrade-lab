@@ -10,6 +10,7 @@ Everything is calculated from the current and earlier candles only (no peeking
 at the future). Trades are placed at the next candle's open.
 """
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -64,6 +65,10 @@ class Rules:
     notes: list[str] = field(default_factory=list)  # e.g. "Set your support level first"
 
 
+# Settings that are thresholds (levels), not lengths: left alone when settings are scaled shorter or longer.
+LEVEL_KEYS = frozenset({"oversold", "exit_level", "rsi_level", "adx_max"})
+
+
 @dataclass(frozen=True)
 class Strategy:
     key: str
@@ -93,6 +98,27 @@ class Strategy:
             v = min(p.maximum, max(p.minimum, v))
             out[p.key] = int(v) if float(p.step).is_integer() and float(p.default).is_integer() else v
         return out
+
+    def length_params(self) -> list[Param]:
+        """Settings that are lengths in candles (whole numbers, 2 or more), which can sensibly be made shorter or longer.
+        Thresholds and times of day are left out."""
+        return [p for p in self.params
+                if p.key not in LEVEL_KEYS and not p.key.endswith("_hour") and float(p.step).is_integer()
+                and float(p.default).is_integer() and p.default >= 2]
+
+    def scaled(self, params: dict, factor: float) -> dict:
+        """The same settings with every length multiplied by `factor`, kept on each setting's own steps and
+        always moved at least one step (down when shrinking, up when growing), within its limits."""
+        base = self.clean_params(params)
+        out = dict(base)
+        for p in self.length_params():
+            step = int(p.step) or 1
+            steps = base[p.key] * factor / step
+            moved = (math.floor(steps) if factor < 1 else math.ceil(steps)) * step
+            if moved == base[p.key]:
+                moved += -step if factor < 1 else step
+            out[p.key] = max(step, moved)
+        return self.clean_params(out)
 
     def run(self, df: pd.DataFrame, params: dict | None = None) -> Rules:
         return self.compute(df, self.clean_params(params))

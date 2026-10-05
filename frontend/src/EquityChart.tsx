@@ -16,8 +16,8 @@ function tick(seconds: number, type: TickMarkType): string {
 }
 
 /** The account balance over time: the strategy against simply buying and holding. */
-export default function EquityChart({ strategy, buyHold = [], start, label = "Strategy", limitHit = null, keptGoing = false }: {
-  strategy: Point[]; buyHold?: Point[]; start: number; label?: string;
+export default function EquityChart({ strategy, buyHold = [], start, label = "Strategy", compareLabel = "Buy and hold", limitHit = null, keptGoing = false }: {
+  strategy: Point[]; buyHold?: Point[]; start: number; label?: string; compareLabel?: string;
   /** When the drawdown limit was reached (Unix seconds), marked on the line. */
   limitHit?: number | null; keptGoing?: boolean;
 }) {
@@ -38,7 +38,7 @@ export default function EquityChart({ strategy, buyHold = [], start, label = "St
       },
     });
     if (buyHold.length) {
-      const bh = chart.addSeries(LineSeries, { color: "#8a9bad", lineWidth: 1, priceLineVisible: false, title: "Buy and hold" });
+      const bh = chart.addSeries(LineSeries, { color: "#8a9bad", lineWidth: 1, priceLineVisible: false, title: compareLabel });
       bh.setData(buyHold.map((p) => ({ time: p.time as Time, value: p.value })));
     }
     const st = chart.addSeries(LineSeries, { color: "#34d399", lineWidth: 2, priceLineVisible: false, title: label });
@@ -51,7 +51,7 @@ export default function EquityChart({ strategy, buyHold = [], start, label = "St
     }
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [strategy, buyHold, start, label, limitHit, keptGoing]);
+  }, [strategy, buyHold, start, label, compareLabel, limitHit, keptGoing]);
 
   return <div ref={host} className="equity-host" role="img" aria-label="Account balance over time, strategy versus buy and hold" />;
 }

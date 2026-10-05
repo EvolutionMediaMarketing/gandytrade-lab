@@ -54,7 +54,11 @@ class BasketResult(Result):
 
 def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: float, mode: str, direction: str,
         risk: RiskSettings, max_open_risk_pct: float = 10.0, market_spreads: bool = True,
-        keep_going: bool = False) -> BasketResult:
+        keep_going: bool = False, trade_from: int = 0, trade_to: int | None = None) -> BasketResult:
+    """Run the basket. `trade_from` / `trade_to` (Unix seconds) limit trading to one stretch of the history,
+    for the walk-forward check: the strategy's rules are still worked out on all the candles before it, so its
+    indicators are exactly as they'd have been live, but the account opens at `trade_from` and anything still
+    open is closed at the last candle on or before `trade_to`."""
     risk = risk.cleaned()
     allow_short_mode = direction == "both" and mode == "cfd"
 
@@ -79,7 +83,8 @@ def run(legs: list[Leg], strategy: Strategy, params: dict, *, start_balance: flo
             "exit_labels": {s: side.exit_label or "Exit rule" for s, side in sides},
         })
 
-    timeline = sorted({t for leg in legs for t in leg.index})
+    timeline = sorted(t for t in {t for leg in legs for t in leg.index}
+                      if t >= trade_from and (trade_to is None or t <= trade_to))
     cash = start_balance
     limits = AccountLimits(risk, peak=cash, keep_going=keep_going)
     after_stop = 0

@@ -679,3 +679,26 @@ export interface MarketInfo {
   newsAt: number | null;
   allowanceLeft: number;
 }
+
+/** Walk-forward check and robustness verdict (backend: app/backtest/walkforward.py). */
+export interface WalkForwardCheck { key: string; label: string; status: "pass" | "warn" | "fail"; detail: string }
+export interface WalkForwardWindow {
+  trainFrom: number; trainTo: number; testFrom: number; testTo: number; picked: string; pickedParams: Record<string, number>;
+  tunedReturnPct: number; tunedAnnualPct: number | null; testReturnPct: number; testTrades: number; yoursTestReturnPct: number;
+}
+export interface WalkForwardSetting {
+  label: string; params: Record<string, number>; role: string; returnPct: number; annualPct: number | null;
+  profitFactor: number | null; trades: number; maxDrawdownPct: number; avgR: number | null;
+}
+interface WalkForwardMetrics { final: number; returnPct: number; trades: number; winRate: number | null; avgR: number | null; maxDrawdownPct: number }
+export type WalkForward = { warnings: { level: string; text: string }[]; sample: boolean } & (
+  | { ok: false; reason: string }
+  | {
+      ok: true; strategy: { key: string; name: string; params: Record<string, number> }; segments: number; trainSegments: number;
+      windows: WalkForwardWindow[]; candidates: string[];
+      unseen: { from: number; to: number; metrics: WalkForwardMetrics; annualPct: number | null; equity: { time: number; value: number }[] };
+      yours: { metrics: WalkForwardMetrics; annualPct: number | null; equity: { time: number; value: number }[] };
+      tunedAnnualPct: number | null; efficiencyPct: number | null; settings: WalkForwardSetting[]; monteCarlo: MonteCarlo;
+      checks: WalkForwardCheck[]; verdict: { key: "reject" | "watchlist" | "incubate" | "candidate"; label: string; text: string; passed: number; total: number };
+      notes: string[]; headline: string; startBalance: number;
+    });

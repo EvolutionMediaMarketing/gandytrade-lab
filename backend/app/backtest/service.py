@@ -10,8 +10,11 @@ from ..market.service import get_history
 from ..market.timeframes import get_timeframe
 from ..risk.guard import RiskSettings, leverage_cap
 from ..strategies.library import get_strategy
-from . import engine, montecarlo, report
-from .costs import default_costs, merge
+from ..market.symbols import Symbol
+from ..market.timeframes import Timeframe
+from ..strategies.base import Strategy
+from . import basket, engine, montecarlo, report, walkforward
+from .costs import Costs, default_costs, merge
 
 MAX_POINTS = 2000  # equity curve points sent to the browser
 CASH_FIRST = {"stock", "etf", "ukstock"}
@@ -46,7 +49,27 @@ def _thin(points: list[tuple[int, float]]) -> list[dict]:
     return [{"time": t, "value": round(v, 2)} for t, v in picked]
 
 
-def run(db: Session, req: Request) -> dict:
+@dataclass
+class Prepared:
+    symbol: Symbol
+    tf: Timeframe
+    strategy: Strategy
+    params: dict
+    mode: str
+    direction: str
+    start: float
+    history: object
+    bars: list
+    currency: str
+    conv: object
+    costs: Costs
+    risk: RiskSettings
+    own_spread: bool
+    settings: engine.Settings
+
+
+def prepare(db: Session, req: Request) -> Prepared:
+    """Check the request, load the history and work out costs and risk settings."""
     symbol = lookup(db, req.symbol)
     tf = get_timeframe(req.timeframe)
     strategy = get_strategy(req.strategy)
@@ -74,6 +97,28 @@ def run(db: Session, req: Request) -> dict:
         leverage=leverage_cap(symbol.code, symbol.asset_class, mode), costs=costs, market_spreads=not own_spread,
         keep_going=bool(req.keep_going),
     )
+    return Prepared(symbol, tf, strategy, params, mode, direction, start, history, bars, currency, conv, costs,
+                    risk, own_spread, settings)
+
+
+def walkforward_setup(db: Session, req: Request) -> tuple[walkforward.Setup, list, bool]:
+    """The walk-forward check for one market runs on the basket engine with a single market, which gives
+    exactly the same trades as the normal backtester (the tests check), with no open-risk limit."""
+    p = prepare(db, req)
+    if p.strategy.benchmark:
+        raise ValueError("Buy and hold has nothing to tune: choose a strategy to check.")
+    leg = basket.Leg(code=p.symbol.code, bars=p.bars, conv=p.conv, costs=p.costs, leverage=p.settings.leverage)
+    setup = walkforward.Setup([leg], p.strategy, p.params, p.start, p.mode, p.settings.direction, p.risk,
+                              max_open_risk_pct=100.0, market_spreads=not p.own_spread)
+    warnings = [{"level": "stop", "text": "Sample data, not real prices: this result means nothing."}] if p.history.sample else []
+    return setup, warnings, p.history.sample
+
+
+def run(db: Session, req: Request) -> dict:
+    p = prepare(db, req)
+    symbol, tf, strategy, params, mode, direction, start = p.symbol, p.tf, p.strategy, p.params, p.mode, p.direction, p.start
+    history, bars, currency, conv, costs, risk, own_spread, settings = (
+        p.history, p.bars, p.currency, p.conv, p.costs, p.risk, p.own_spread, p.settings)
 
     # The yardstick is plain buy and hold: no leverage, no overnight financing.
     from dataclasses import replace

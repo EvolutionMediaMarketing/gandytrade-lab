@@ -10,10 +10,11 @@ from ..market.directory import lookup
 from ..market.fx import converter, quote_currency
 from ..market.providers.base import ProviderError
 from ..market.service import get_history, history_cap
-from ..market.timeframes import get_timeframe
+from ..market.timeframes import Timeframe, get_timeframe
 from ..risk.guard import RiskSettings, leverage_cap
+from ..strategies.base import Strategy
 from ..strategies.library import get_strategy
-from . import basket, engine, montecarlo, report
+from . import basket, engine, montecarlo, report, walkforward
 from .costs import default_costs
 from .service import _thin
 
@@ -38,7 +39,24 @@ class Request:
     keep_going: bool = False  # keep trading past the drawdown limit (tests only)
 
 
-def run(db: Session, req: Request) -> dict:
+@dataclass
+class Prepared:
+    legs: list
+    names: dict
+    warnings: list
+    sample: bool
+    strategy: Strategy
+    params: dict
+    tf: Timeframe
+    mode: str
+    direction: str
+    start: float
+    risk: RiskSettings
+    open_limit: float
+
+
+def prepare(db: Session, req: Request) -> Prepared:
+    """Check the request and load every market over the period they all cover."""
     codes = list(dict.fromkeys(req.markets))[:MAX_MARKETS]
     if len(codes) < 2:
         raise ValueError("Choose at least two markets for a basket.")
@@ -102,6 +120,19 @@ def run(db: Session, req: Request) -> dict:
     if len(legs) < 2:
         raise ValueError("Fewer than two markets share enough history on this timeframe.")
     names = {s.code: s.name for s, _ in loaded}
+    return Prepared(legs, names, warnings, sample, strategy, params, tf, mode, direction, start, risk, open_limit)
+
+
+def walkforward_setup(db: Session, req: Request) -> tuple[walkforward.Setup, list, bool]:
+    p = prepare(db, req)
+    return (walkforward.Setup(p.legs, p.strategy, p.params, p.start, p.mode, p.direction, p.risk, p.open_limit),
+            p.warnings, p.sample)
+
+
+def run(db: Session, req: Request) -> dict:
+    p = prepare(db, req)
+    legs, names, warnings, sample, strategy, params = p.legs, p.names, p.warnings, p.sample, p.strategy, p.params
+    tf, mode, direction, start, risk, open_limit = p.tf, p.mode, p.direction, p.start, p.risk, p.open_limit
 
     result = basket.run(legs, strategy, params, start_balance=start, mode=mode, direction=direction, risk=risk,
                         max_open_risk_pct=open_limit, keep_going=bool(req.keep_going))

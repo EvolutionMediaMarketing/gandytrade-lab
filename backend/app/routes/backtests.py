@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ..backtest import basket_service, service
+from ..backtest import basket_service, service, walkforward
 from ..backtest.costs import default_costs
 from ..db import get_session
 from ..deps import current_user
@@ -70,6 +70,30 @@ def run_basket(body: BasketBody, db: Session = Depends(get_session), user: User 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def _walkforward(setup_fn, db: Session, req) -> dict:
+    """Shared by both walk-forward routes: around 60 backtests, a few seconds to a minute."""
+    try:
+        setup, warnings, sample = setup_fn(db, req)
+        result = walkforward.run(setup)
+    except walkforward.Busy as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {**result, "warnings": warnings, "sample": sample}
+
+
+@router.post("/backtests/walkforward")
+def walkforward_single(body: BacktestBody, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    return _walkforward(service.walkforward_setup, db, service.Request(**body.model_dump()))
+
+
+@router.post("/backtests/basket/walkforward")
+def walkforward_basket(body: BasketBody, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    return _walkforward(basket_service.walkforward_setup, db, basket_service.Request(**body.model_dump()))
 
 
 def _summary(run: BacktestRun) -> dict:
