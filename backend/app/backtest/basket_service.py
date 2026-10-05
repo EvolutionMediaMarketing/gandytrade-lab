@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..market.directory import lookup
 from ..market.fx import converter, quote_currency
 from ..market.providers.base import ProviderError
-from ..market.service import get_history
+from ..market.service import get_history, history_cap
 from ..market.timeframes import get_timeframe
 from ..risk.guard import RiskSettings, leverage_cap
 from ..strategies.library import get_strategy
@@ -80,9 +80,14 @@ def run(db: Session, req: Request) -> dict:
     earliest_start = min(b[0].ts for _, b in loaded)
     if first - earliest_start > 365 * 86400 and not (req.years and req.years > 0):
         when = datetime.fromtimestamp(first, tz=timezone.utc).strftime("%B %Y")
-        warnings.append({"level": "info", "text": (
-            f"The test starts in {when} because {latest_start[0].name} has prices only from then "
-            f"({len(latest_start[1])} candles). Leave it out to test further back.")})
+        sym, its_bars = latest_start
+        if len(its_bars) >= history_cap(sym, tf):
+            text = (f"The test starts in {when}: backtests use at most {len(its_bars):,} candles, which for "
+                    f"{sym.name} on this timeframe reaches back to then. Every market is tested over the same period.")
+        else:
+            text = (f"The test starts in {when} because {sym.name} has prices only from then "
+                    f"({len(its_bars):,} candles). Leave it out to test further back.")
+        warnings.append({"level": "info", "text": text})
     if req.years and req.years > 0:
         first = max(first, last - req.years * 365.25 * 86400)
     legs = []
