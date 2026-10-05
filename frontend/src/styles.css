@@ -485,3 +485,9 @@ ul.plain { margin: 0; padding-left: 18px; }
 .research-all td, .research-all th { white-space: nowrap; }
 @media (max-width: 640px) { .research-cards { grid-template-columns: 1fr; } .page.research { padding: 10px; } }
 .link-button.danger-link { color: #f87171; }
+
+/* Dashboard */
+.page.dashboard { padding: 16px; max-width: 1200px; margin: 0 auto; display: grid; gap: 14px; }
+.page.dashboard .equity-host { height: 280px; }
+.warn.good { background: rgba(52, 211, 153, 0.08); color: #6ee7b7; border-color: var(--accent); }
+.export-text { width: 100%; margin-top: 10px; font-family: var(--mono); font-size: 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }

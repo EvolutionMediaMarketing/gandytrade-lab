@@ -12,6 +12,7 @@ from ..market.directory import lookup
 from ..models import PaperAccount, PaperEvent, PaperTrade, User
 from .. import sessions
 from ..paper import auto
+from ..paper import performance as perf
 from ..paper import service as paper
 from ..models import AutoRun
 from ..strategies.library import STRATEGIES
@@ -165,6 +166,24 @@ def delete_account(account_id: int, body: DeleteAccount, request: Request, db: S
                    f"{name}: {counts['trades']} trade(s), {counts['runs']} automatic run(s)")
     db.commit()
     return {"ok": True, **counts}
+
+
+@router.get("/accounts/{account_id}/performance")
+def account_performance(account_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.get_account(db, user, account_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return perf.performance(db, acct)
+
+
+@router.get("/accounts/{account_id}/coach-export")
+def coach_export(account_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        acct = paper.get_account(db, user, account_id)
+    except paper.PaperError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"text": perf.coach_export(db, acct)}
 
 
 @router.get("/accounts/{account_id}")

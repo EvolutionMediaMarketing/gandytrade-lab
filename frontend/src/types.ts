@@ -528,6 +528,8 @@ export interface ResearchAcross {
   held: number;
   heldMarkets: { market: string; name: string; returnPct: number; passed: number }[];
   avgAnnualPct: number;
+  years?: number;
+  avgReturnPct?: number;
   tradesPerYear: number;
 }
 
@@ -562,4 +564,24 @@ export interface BackupStatus {
   overdue: boolean;
   lastOk: string | null;
   runs: { at: string; ok: boolean; name: string; size: number; restoreTested: boolean; uploaded: boolean; detail: string }[];
+}
+
+
+export interface PerfStats {
+  trades: number; wins: number; losses: number; winRate: number | null; net: number; costs: number;
+  avgWin: number | null; avgLoss: number | null; payoff: number | null; expectancy: number | null; avgR: number | null;
+  profitFactor: number | null; best: number | null; worst: number | null; longestLosingRun: number; avgHoldHours: number | null;
+}
+
+export interface Performance {
+  account: { id: number; name: string; mode: string; funded: number; equity: number; returnPct: number; openCount: number; maxDrawdownLimit: number };
+  all: PerfStats;
+  manual: PerfStats;
+  auto: PerfStats;
+  maxDrawdownPct: number;
+  currentDrawdownPct: number;
+  ruleScore: number | null;
+  curve: { time: number; value: number }[];
+  breakdown: { label: string; symbol: string; trades: number; net: number; winRate: number | null; avgR: number | null; costs: number }[];
+  feedback: { level: "stop" | "caution" | "info" | "good"; title: string; text: string }[];
 }

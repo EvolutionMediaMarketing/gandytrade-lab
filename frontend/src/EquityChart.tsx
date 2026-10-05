@@ -16,7 +16,7 @@ function tick(seconds: number, type: TickMarkType): string {
 }
 
 /** The account balance over time: the strategy against simply buying and holding. */
-export default function EquityChart({ strategy, buyHold, start }: { strategy: Point[]; buyHold: Point[]; start: number }) {
+export default function EquityChart({ strategy, buyHold = [], start, label = "Strategy" }: { strategy: Point[]; buyHold?: Point[]; start: number; label?: string }) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,14 +33,16 @@ export default function EquityChart({ strategy, buyHold, start }: { strategy: Po
         timeFormatter: (t: Time) => new Date((t as number) * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
       },
     });
-    const bh = chart.addSeries(LineSeries, { color: "#8a9bad", lineWidth: 1, priceLineVisible: false, title: "Buy and hold" });
-    bh.setData(buyHold.map((p) => ({ time: p.time as Time, value: p.value })));
-    const st = chart.addSeries(LineSeries, { color: "#34d399", lineWidth: 2, priceLineVisible: false, title: "Strategy" });
+    if (buyHold.length) {
+      const bh = chart.addSeries(LineSeries, { color: "#8a9bad", lineWidth: 1, priceLineVisible: false, title: "Buy and hold" });
+      bh.setData(buyHold.map((p) => ({ time: p.time as Time, value: p.value })));
+    }
+    const st = chart.addSeries(LineSeries, { color: "#34d399", lineWidth: 2, priceLineVisible: false, title: label });
     st.setData(strategy.map((p) => ({ time: p.time as Time, value: p.value })));
     st.createPriceLine({ price: start, color: "#3b4b5c", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "Start" });
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [strategy, buyHold, start]);
+  }, [strategy, buyHold, start, label]);
 
   return <div ref={host} className="equity-host" role="img" aria-label="Account balance over time, strategy versus buy and hold" />;
 }

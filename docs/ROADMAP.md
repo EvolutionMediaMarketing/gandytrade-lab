@@ -83,13 +83,13 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Monthly top-ups | Adds a fixed amount to a paper account each month, matching how the real pot will grow | Account settings |
 | Background worker | Fetches prices on schedule and fills paper orders, stops and targets | Separate container |
 | Trade journal | Notes, chart snapshot, reason for entry and a mood tag on every trade | Journal page |
-| Performance dashboard | Equity curve, win rate, average win vs average loss, expectancy, drawdown, rule score, per account | Dashboard page |
+| Performance dashboard (**done**) | Equity curve, win rate, average win vs average loss, expectancy, drawdown, rule score, per account | Dashboard page |
 | Learning path | The 12-week course, unlocked week by week, each with short lessons, a quiz and one task in the app | Learn section |
 | Pre-trade checklist | Trend direction, stop-loss, position size and a one-sentence reason; the trade can't be placed until complete | Trade panel |
 | Rule score | Each trade scored on whether the plan was followed, separately from profit | Journal and dashboard |
 | Weekly review | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
-| Automatic feedback | Rule-based warnings, e.g. moving stops further away, trading more after losses, losses twice the size of wins | Dashboard |
-| Coach export | One click copies a summary of a backtest or the week's trades and journal, ready for a coaching session with Claude | Dashboard and backtest pages |
+| Automatic feedback (**done**) | Rule-based warnings, e.g. moving stops further away, trading more after losses, losses twice the size of wins | Dashboard |
+| Coach export (**done**) | One click copies a summary of a backtest or the week's trades and journal, ready for a coaching session with Claude | Dashboard and backtest pages |
 
 **Gate:** paper accounts run for four weeks without errors, and every fill matches the price recorded at that moment.
 

@@ -5,6 +5,7 @@ import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
+import DashboardPage from "./DashboardPage";
 import ResearchPage from "./ResearchPage";
 import type { ShownTrade } from "./ChartView";
 import type { TradePlan } from "./PlanZones";
@@ -75,6 +76,7 @@ const PAGES = [
   { key: "backtest", label: "Backtest" },
   { key: "research", label: "Research" },
   { key: "paper", label: "Paper" },
+  { key: "dashboard", label: "Dashboard" },
   { key: "tools", label: "Tools" },
   { key: "learn", label: "Learn" },
   { key: "settings", label: "Settings" },
@@ -323,6 +325,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           onBacktest={(r) => { setBacktestInit({ symbol: r.symbol, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, mode: "cfd", years: 0 }); go("backtest"); }}
           onRunOnPaper={(p) => { setAutoPrefill(p); go("paper"); }} />
       )}
+      {page === "dashboard" && <DashboardPage onAuthError={handleAuth} />}
       {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (
         <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} />

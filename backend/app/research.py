@@ -365,6 +365,9 @@ def summarise(rows: list[dict]) -> dict:
             "heldMarkets": [{"market": r["market"], "name": r["name"], "returnPct": r["returnPct"], "passed": r["passed"]}
                             for r in sorted(good, key=lambda r: -r["score"])],
             "avgAnnualPct": round(sum(r["annualPct"] or 0 for r in good) / len(good), 2),
+            # Tests shorter than a year: the average result over the test itself, never scaled up to a year.
+            "years": round(min(r.get("years") or 0 for r in good), 1),
+            "avgReturnPct": round(sum(r["returnPct"] for r in good) / len(good), 2),
             "tradesPerYear": round(sum(r["tradesPerYear"] or 0 for r in good), 1),
         })
     across.sort(key=lambda a: (-a["held"], -a["avgAnnualPct"]))

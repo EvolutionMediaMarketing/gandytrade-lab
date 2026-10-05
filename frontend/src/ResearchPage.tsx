@@ -18,6 +18,8 @@ const TF_LABEL: Record<string, string> = { "5m": "5 minutes", "15m": "15 minutes
 
 const pct = (v: number | null | undefined, sign = true) =>
   v === null || v === undefined ? "–" : `${sign && v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+/** "4.0 yrs", or "6 months" for tests shorter than a year (never scaled up to a yearly figure). */
+const span = (years: number) => (years >= 1 ? `${years.toFixed(1)} yrs` : `${Math.max(1, Math.round(years * 12))} month${Math.round(years * 12) === 1 ? "" : "s"}`);
 const dir = (d: string) => (d === "both" ? "Buys and shorts" : "Buys only");
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
@@ -282,7 +284,9 @@ function Results({ job, options, onBacktest, onRunOnPaper }: {
                     <td>{a.strategyName}</td><td>{dir(a.direction)}</td><td>{TF_LABEL[a.timeframe] ?? a.timeframe}</td>
                     <td className="num">{a.held} of {a.markets}</td>
                     <td>{a.heldMarkets.map((m) => displayCode(m.market)).join(", ")}</td>
-                    <td className={`num ${a.avgAnnualPct >= 0 ? "up" : "down"}`}>{pct(a.avgAnnualPct)}</td>
+                    <td className={`num ${a.avgAnnualPct >= 0 ? "up" : "down"}`}>
+                      {a.years !== undefined && a.years < 1 ? `${pct(a.avgReturnPct ?? 0)} over ${span(a.years)}` : pct(a.avgAnnualPct)}
+                    </td>
                     <td className="num">{a.tradesPerYear}</td>
                   </tr>
                 ))}
@@ -321,7 +325,10 @@ function Results({ job, options, onBacktest, onRunOnPaper }: {
                 {all.map((r) => (
                   <tr key={key(r)}>
                     <td>{displayCode(r.market)}</td><td>{r.strategyName}</td><td>{r.direction === "both" ? "Both" : "Buys"}</td><td>{r.timeframe}</td>
-                    <td className={`num ${(r.annualPct ?? r.returnPct) >= 0 ? "up" : "down"}`}>{pct(r.annualPct)}</td>
+                    <td className={`num ${(r.annualPct ?? r.returnPct) >= 0 ? "up" : "down"}`}
+                      title={r.years < 1 ? `Result over ${span(r.years)}: too short to give a yearly figure` : undefined}>
+                      {r.years >= 1 ? pct(r.annualPct) : `${pct(r.returnPct)} (${span(r.years)})`}
+                    </td>
                     <td className="num">{r.trades}</td>
                     <td className="num">{pct(-r.maxDrawdownPct, false)}</td>
                     <td className="num muted">{pct(r.buyHoldReturnPct)}</td>
@@ -354,9 +361,9 @@ function RowCard({ row: r, onBacktest, onRunOnPaper }: { row: ResearchRow; onBac
         <span className="muted">{TF_LABEL[r.timeframe] ?? r.timeframe} · {dir(r.direction)}</span>
       </div>
       <dl className="facts compact">
-        <dt>Per year</dt><dd className={(r.annualPct ?? 0) >= 0 ? "up" : "down"}>{pct(r.annualPct)}</dd>
-        <dt>Over {r.years} yrs</dt><dd>{pct(r.returnPct)}</dd>
-        <dt>Trades</dt><dd>{r.trades}{r.tradesPerYear !== null ? ` (${r.tradesPerYear}/yr)` : ""}</dd>
+        {r.years >= 1 && <><dt>Per year</dt><dd className={(r.annualPct ?? 0) >= 0 ? "up" : "down"}>{pct(r.annualPct)}</dd></>}
+        <dt>Over {span(r.years)}</dt><dd className={r.years < 1 ? (r.returnPct >= 0 ? "up" : "down") : ""}>{pct(r.returnPct)}</dd>
+        <dt>Trades</dt><dd>{r.trades}{r.tradesPerYear !== null ? (r.years >= 1 ? ` (${r.tradesPerYear}/yr)` : ` (${Math.round(r.tradesPerYear / 12)} a month)`) : ""}</dd>
         <dt>Win rate</dt><dd>{pct(r.winRate, false)}</dd>
         <dt>Average R</dt><dd>{r.avgR?.toFixed(2) ?? "–"}</dd>
         <dt>Worst fall</dt><dd>{pct(-r.maxDrawdownPct, false)}</dd>
