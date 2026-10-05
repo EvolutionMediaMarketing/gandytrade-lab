@@ -75,5 +75,8 @@ sites on the server; load reached about 27. Fixed with a WHM Include Editor rule
 ignored. ModSecurity is installed with the engine on but switched off for almost every domain, so ModSecurity rules
 (two were added, ids 1990001–2) only reach a few sites. Firewall: none (ImunifyAV only, no CSF/Imunify360).
 Retired three finished Plate Wizard setup scripts from amtestdomain1.co.uk's mu-plugins to
-`/home/amtestdomain1co/pwc-retired/`. Open server follow-ups: Plate Wizard plugin security review, client admin
+`/home/amtestdomain1co/pwc-retired/`. ImunifyAV flags the app's compiled Python libraries (reason SMW-HEUR-ELF, under
+`/home/gandytradeco/.local/share/containers/`) as "infected": false positives. Checked 5 Oct: 5,647 files matched
+their packages' published hashes, 0 mismatches. Never use "Clean up all" on them; add that folder to ImunifyAV's
+Ignore List. Open server follow-ups: Plate Wizard plugin security review, client admin
 users/passwords, why ModSecurity is off per domain, robots.txt for glitteringstar.co.uk's crawler load.
