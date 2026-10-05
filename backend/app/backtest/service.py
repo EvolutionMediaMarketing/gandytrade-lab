@@ -10,7 +10,7 @@ from ..market.service import get_history
 from ..market.timeframes import get_timeframe
 from ..risk.guard import RiskSettings, leverage_cap
 from ..strategies.library import get_strategy
-from . import engine, report
+from . import engine, montecarlo, report
 from .costs import default_costs, merge
 
 MAX_POINTS = 2000  # equity curve points sent to the browser
@@ -140,6 +140,9 @@ def run(db: Session, req: Request) -> dict:
         "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
         "startBalance": start,
         "keptGoing": bool(req.keep_going),
+        "monteCarlo": None if strategy.benchmark else montecarlo.run(montecarlo.Inputs(
+            r=montecarlo.r_multiples(result.trades), start_balance=start, risk_pct=risk.risk_pct,
+            drawdown_limit_pct=risk.max_drawdown_pct)),
         "limitHit": result.limit_hit_ts if result.limit_hit_ts > 1 else None,
         "from": bars[0].ts,
         "to": bars[-1].ts,

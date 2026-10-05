@@ -181,6 +181,7 @@ export interface BacktestResult {
   startBalance: number;
   keptGoing?: boolean;
   limitHit?: number | null;
+  monteCarlo?: MonteCarlo | null;
   from: number;
   to: number;
   candles: number;
@@ -641,7 +642,7 @@ export interface BasketInit {
 export interface BasketResult {
   strategy: { key: string; name: string; params: Record<string, number> };
   timeframe: string; mode: string; direction: string; startBalance: number; maxOpenRiskPct: number; riskPct: number;
-  keptGoing: boolean; limitHit: number | null;
+  keptGoing: boolean; limitHit: number | null; monteCarlo?: MonteCarlo | null;
   from: number; to: number; years: number;
   markets: { market: string; name: string; basketTrades: number; basketNet: number; basketWinRate: number | null; basketAvgR: number | null;
              aloneReturnPct: number; aloneTrades: number; aloneDrawdownPct: number; holdReturnPct: number }[];
@@ -650,3 +651,17 @@ export interface BasketResult {
   equity: { time: number; value: number }[]; buyHoldEquity: { time: number; value: number }[];
   sample: boolean;
 }
+
+export type MonteCarlo =
+  | { ok: false; reason: string }
+  | {
+      ok: true; simulations: number; trades: number; riskPct: number; startBalance: number; drawdownLimitPct: number;
+      final: Record<"5" | "25" | "50" | "75" | "95", number>;
+      returnPct: Record<"5" | "25" | "50" | "75" | "95", number>;
+      worstFall: Record<"50" | "75" | "90" | "95" | "99", number>;
+      losingRun: Record<"50" | "95" | "99", number>;
+      chanceLoss: number; chanceLimit: number; chanceHalved: number;
+      replayFall: number; replayFallRank: number;
+      curve: { step: number[]; bands: Record<"5" | "25" | "50" | "75" | "95", number[]>; replay: number[] };
+      summary: { level: "info" | "caution" | "stop"; text: string }[];
+    };

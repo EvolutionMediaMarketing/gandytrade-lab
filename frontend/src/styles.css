@@ -514,3 +514,27 @@ ul.plain { margin: 0; padding-left: 18px; }
 .subtabs { display: flex; gap: 6px; padding: 10px 16px 0; }
 .subtabs button { font-size: 13px; padding: 6px 12px; border-radius: 999px; }
 .subtabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+
+/* Monte Carlo fan chart: one blue hue for the simulated range, the app's green for the backtest's own order. */
+.monte-carlo .stats { margin-bottom: 12px; }
+.fan-wrap { position: relative; margin: 4px 0 12px; }
+.fan { width: 100%; height: auto; display: block; }
+.fan .band-outer { fill: rgba(147, 197, 253, 0.16); }
+.fan .band-inner { fill: rgba(147, 197, 253, 0.32); }
+.fan .line-mid { fill: none; stroke: #93c5fd; stroke-width: 2; }
+.fan .line-real { fill: none; stroke: var(--accent); stroke-width: 2; }
+.fan .dot-mid { fill: #93c5fd; stroke: var(--surface); stroke-width: 2; }
+.fan .dot-real { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.fan-grid { stroke: var(--line); stroke-width: 1; }
+.fan-start { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.fan-cross { stroke: var(--muted); stroke-width: 1; }
+.fan-axis { fill: var(--muted); font-size: 11px; font-family: var(--mono); }
+.fan-legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); margin: 0 0 6px; }
+.fan-legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.fan-legend .sw.band-outer { background: rgba(147, 197, 253, 0.16); }
+.fan-legend .sw.band-inner { background: rgba(147, 197, 253, 0.32); }
+.fan-legend .sw.line-mid { background: #93c5fd; height: 2px; vertical-align: 3px; }
+.fan-legend .sw.line-real { background: var(--accent); height: 2px; vertical-align: 3px; }
+.fan-tip { position: absolute; bottom: 64px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; display: grid; gap: 2px; pointer-events: none; white-space: nowrap; color: var(--text); }
+.fan-wrap details { margin-top: 8px; }

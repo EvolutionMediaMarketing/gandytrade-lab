@@ -13,7 +13,7 @@ from ..market.service import get_history, history_cap
 from ..market.timeframes import get_timeframe
 from ..risk.guard import RiskSettings, leverage_cap
 from ..strategies.library import get_strategy
-from . import basket, engine, report
+from . import basket, engine, montecarlo, report
 from .costs import default_costs
 from .service import _thin
 
@@ -155,6 +155,9 @@ def run(db: Session, req: Request) -> dict:
         "strategy": {"key": strategy.key, "name": strategy.name, "params": params},
         "timeframe": tf.code, "mode": mode, "direction": direction, "startBalance": start,
         "maxOpenRiskPct": open_limit, "riskPct": risk.risk_pct, "keptGoing": bool(req.keep_going),
+        "monteCarlo": montecarlo.run(montecarlo.Inputs(
+            r=montecarlo.r_multiples(result.trades), start_balance=start, risk_pct=risk.risk_pct,
+            drawdown_limit_pct=risk.max_drawdown_pct)),
         "limitHit": result.limit_hit_ts if result.limit_hit_ts > 1 else None,
         "from": result.timeline[0], "to": result.timeline[-1], "years": round(span, 1),
         "markets": alone, "metrics": m, "buyHold": hm, "averageAloneReturnPct": round(avg_alone, 2),

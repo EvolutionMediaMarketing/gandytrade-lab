@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
 import EquityChart from "./EquityChart";
+import MonteCarloCard from "./MonteCarloCard";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type { AutoRun, BasketInit, BasketResult, Catalogue, PaperAccount, StrategiesResponse, SymbolInfo } from "./types";
 
@@ -198,6 +199,7 @@ export default function BasketPanel({ catalogue, favourites, onToggleFavourite, 
               <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance} label="Basket"
               limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
+            <MonteCarloCard mc={result.monteCarlo} />
             <div className="card">
               <h3>Each market</h3>
               <div className="table-wrap">

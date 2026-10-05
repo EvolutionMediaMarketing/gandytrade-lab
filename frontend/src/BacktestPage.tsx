@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import ChartView, { ChartMarker } from "./ChartView";
 import EquityChart from "./EquityChart";
+import MonteCarloCard from "./MonteCarloCard";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import type {
   BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, CostSettings, StrategiesResponse, SymbolInfo, AutoPrefill,
@@ -394,6 +395,7 @@ export default function BacktestPage({ catalogue, favourites, onToggleFavourite,
               <EquityChart strategy={result.equity} buyHold={result.buyHoldEquity} start={result.startBalance}
                 limitHit={result.limitHit} keptGoing={result.keptGoing} />
             </div>
+            <MonteCarloCard mc={result.monteCarlo} />
 
             <div className="card chart-card">
               <h3>Trades on the chart <span className="muted small">(latest 2,000 candles; click a trade below to jump to it)</span></h3>
