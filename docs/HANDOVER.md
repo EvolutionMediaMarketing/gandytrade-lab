@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (300 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0020.
+- Tests: `cd backend && python -m pytest -q` (313 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0021.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -84,6 +84,14 @@ has the full plan and `CLAUDE.md` the hard rules.
   (weekdays, date range, minimum count; BoE/BoJ weekday names must match); new dates go in `calendar_dates` and merge
   with the built-in ones; a failed page keeps what it had. The six sites were added to the allowlist (read only). If one
   keeps failing (BLS may block automated requests), add its dates by hand in `calendar.DATES`.
+- **Strategy builder** (6 Oct 2026, `backend/app/strategies/builder.py`, Builder page, migration 0021): strategies from
+  blocks (price, numbers, SMA/EMA, RSI, MACD, ADX, ATR, Bollinger, Ichimoku lines and cloud, highest/lowest of N, close
+  N ago; above/below/crosses/rising/falling), buy and/or short rules (enter on all, exit on any), stop (ATR, %, swing)
+  and optional R target. Saved as JSON specs in `custom_strategies`, built into ordinary `Strategy` objects and
+  registered in `STRATEGIES` as `custom_<id>` (app start-up, on every change, `/api/strategies`, and each worker pass),
+  so backtests, walk-forward, research, automatic runs, replay and signals all use them. Lengths are `len_` settings
+  (tunable by walk-forward); compared numbers are `level_` settings (never scaled). Editing or deleting is blocked
+  while a running/paused automatic run uses it ("Save as a new copy" instead). Templates include Cloud + RSI dip.
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.
@@ -122,7 +130,7 @@ rules and costs (fills, spreads, stops).
 
 1. ~~Rerun the 55/20 basket backtest to read its Monte Carlo card~~ (done 5 Oct, figures above).
 2. Phase 3: ~~monthly top-ups~~ and ~~the 12-week course~~ done; the gate is four weeks of paper trading without errors.
-3. Phase 4: ~~walk-forward check~~, ~~market replay~~ and ~~economic calendar~~ done; strategy builder; news alerts. Later: show each strategy's latest verdict on strategy pages.
+3. Phase 4: ~~walk-forward check~~, ~~market replay~~, ~~economic calendar~~ and ~~strategy builder~~ done; news alerts. Later: show each strategy's latest verdict on strategy pages.
 4. Before launch: health monitor, security review.
 
 ## Server incident, 5 October 2026 (not the app)

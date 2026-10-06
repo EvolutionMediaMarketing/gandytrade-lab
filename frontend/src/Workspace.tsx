@@ -7,6 +7,7 @@ import LearnPage from "./LearnPage";
 import JournalPage from "./JournalPage";
 import CalendarPanel, { inWords } from "./CalendarPanel";
 import ReplayPage from "./ReplayPage";
+import BuilderPage from "./BuilderPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import DashboardPage from "./DashboardPage";
@@ -81,6 +82,7 @@ const PAGES = [
   { key: "charts", label: "Charts" },
   { key: "replay", label: "Replay" },
   { key: "backtest", label: "Backtest" },
+  { key: "builder", label: "Builder" },
   { key: "research", label: "Research" },
   { key: "paper", label: "Paper" },
   { key: "journal", label: "Journal" },
@@ -425,6 +427,9 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "dashboard" && <DashboardPage onAuthError={handleAuth} />}
       {page === "review" && <ReviewPage onAuthError={handleAuth} />}
+      {page === "builder" && (
+        <BuilderPage onAuthError={handleAuth} onBacktest={(key) => { setBacktestInit({ strategy: key }); setBasketMode(false); go("backtest"); }} />
+      )}
       {page === "replay" && (
         <ReplayPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} symbol={prefs.symbol}
           indicators={prefs.indicators} style={prefs.style} onAuthError={handleAuth} />

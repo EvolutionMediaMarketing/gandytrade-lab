@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade, CalendarResponse, CalendarStatus,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade, CalendarResponse, CalendarStatus, BuilderCatalogue, BuilderSpec, BuilderStrategy, StrategyParam,
 } from "./types";
 
 export class ApiError extends Error {
@@ -147,6 +147,13 @@ export const api = {
   calendar: (q: { symbol?: string; days?: number; past_days?: number }) =>
     request<CalendarResponse>(`/api/calendar?${new URLSearchParams(
       Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
+  builderCatalogue: () => request<BuilderCatalogue>("/api/builder/catalogue"),
+  builderList: () => request<{ strategies: BuilderStrategy[] }>("/api/builder"),
+  builderCheck: (spec: BuilderSpec) =>
+    request<{ rules: string[]; params: StrategyParam[] }>("/api/builder/check", { method: "POST", body: JSON.stringify({ spec }) }),
+  builderCreate: (spec: BuilderSpec) => request<BuilderStrategy>("/api/builder", { method: "POST", body: JSON.stringify({ spec }) }),
+  builderUpdate: (id: number, spec: BuilderSpec) => request<BuilderStrategy>(`/api/builder/${id}`, { method: "PUT", body: JSON.stringify({ spec }) }),
+  builderDelete: (id: number) => request<{ ok: boolean }>(`/api/builder/${id}`, { method: "DELETE" }),
   calendarStatus: () => request<CalendarStatus>("/api/calendar/status"),
   calendarRefresh: () => request<CalendarStatus>("/api/calendar/refresh", { method: "POST" }),
   setEventPause: (id: number, on: boolean) =>

@@ -458,3 +458,17 @@ class CalendarCheck(Base):
     added: Mapped[int] = mapped_column(Integer, default=0)  # of those, new to the app
     message: Mapped[str] = mapped_column(String(300), default="")
 
+
+class CustomStrategy(Base):
+    """A strategy you made in the strategy builder: its rules as a small JSON spec (see app/strategies/builder.py).
+    It's used everywhere as "custom_<id>"."""
+
+    __tablename__ = "custom_strategies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    spec: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+

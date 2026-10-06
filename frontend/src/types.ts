@@ -781,3 +781,22 @@ export interface CalendarSeriesStatus {
   fromPages: string[];
 }
 export interface CalendarStatus { series: CalendarSeriesStatus[]; coverage: CalendarResponse["coverage"] }
+
+/** Strategy builder (backend: app/strategies/builder.py). */
+export interface BuilderOperand { type: string; value?: number; [field: string]: string | number | undefined }
+export interface BuilderCondition { left: BuilderOperand; op: string; right: BuilderOperand | null }
+export interface BuilderSide { enabled: boolean; entry: BuilderCondition[]; exit: BuilderCondition[] }
+export interface BuilderSpec {
+  name: string; description: string; long: BuilderSide; short: BuilderSide;
+  stop: { type: "atr" | "percent" | "swing"; value?: number; length?: number };
+  target: { type: "none" | "r"; value?: number };
+}
+export interface BuilderStrategy {
+  id: number; key: string; name: string; spec: BuilderSpec; rules: string[]; params: StrategyParam[]; runs: number; updatedAt: string;
+}
+export interface BuilderCatalogue {
+  operands: { type: string; label: string; group: string; lengths: { name: string; label: string; default: number; min: number; max: number }[] }[];
+  ops: { op: string; label: string; needsRight: boolean }[];
+  stops: { type: string; label: string }[];
+  maxConditions: number;
+}

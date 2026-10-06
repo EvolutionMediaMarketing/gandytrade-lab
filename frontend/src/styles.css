@@ -721,3 +721,31 @@ ul.plain { margin: 0; padding-left: 18px; }
 .calendar-time { font-family: var(--mono); color: #c084fc; }
 .calendar-what { display: block; color: var(--muted); font-size: 12.5px; margin: 2px 0; }
 .banner.event-soon { background: rgba(192, 132, 252, 0.12); color: #e9d5ff; }
+
+/* Strategy builder */
+.page.builder { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; padding: 16px; max-width: 1300px; margin: 0 auto; width: 100%; align-items: start; }
+.builder-list { display: grid; gap: 8px; }
+.builder-list h2, .builder-list h3 { margin: 0; }
+.builder-list h3 { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.builder-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.builder-list .acct { width: 100%; text-align: left; display: grid; gap: 2px; }
+.builder-list .ghost.small { justify-self: start; text-align: left; }
+.builder-form { display: grid; gap: 14px; }
+.builder-form .param-grid .wide { grid-column: span 2; }
+.builder-block { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.builder-block.off { opacity: 0.7; }
+.builder-block h3 { margin: 0; font-size: 15px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.builder-block h4 { margin: 4px 0 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+.builder-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.builder-row.condition { padding: 6px 8px; background: var(--surface-2); border-radius: var(--radius); }
+.builder-row select { max-width: 330px; }
+.operand { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.num-in { width: 72px; }
+.inline { display: inline-flex; gap: 4px; align-items: center; }
+.builder-preview { background: var(--info-bg); border-radius: var(--radius); padding: 10px 14px; }
+.builder-preview h3 { margin: 0 0 4px; font-size: 14px; }
+.builder-preview ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+@media (max-width: 860px) {
+  .page.builder { grid-template-columns: 1fr; }
+  .builder-form .param-grid .wide { grid-column: auto; }
+}

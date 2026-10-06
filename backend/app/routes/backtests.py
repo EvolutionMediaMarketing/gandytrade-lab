@@ -18,7 +18,10 @@ KEEP_RUNS = 100
 
 
 @router.get("/strategies")
-def strategies(_: User = Depends(current_user)) -> dict:
+def strategies(db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    from ..strategies import builder
+
+    builder.sync(db)
     return {
         "strategies": [s.to_dict() for s in STRATEGIES.values()],
         "defaultCosts": {

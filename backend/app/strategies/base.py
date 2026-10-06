@@ -84,6 +84,8 @@ class Strategy:
     can_short: bool = True
     intraday_only: bool = False  # scalping: only trades on short candles (1 to 15 minutes)
     suggested_timeframe: str = ""
+    custom: bool = False  # made in the strategy builder (key "custom_<id>")
+    version: str = ""  # builder strategies: when last saved, so the library knows to rebuild it
     # Name it with its lengths ("Breakout 55/20"), for strategies whose lengths are the main thing you change.
     named_by_lengths: bool = False
 
@@ -105,7 +107,8 @@ class Strategy:
         """Settings that are lengths in candles (whole numbers, 2 or more), which can sensibly be made shorter or longer.
         Thresholds and times of day are left out."""
         return [p for p in self.params
-                if p.key not in LEVEL_KEYS and not p.key.endswith("_hour") and float(p.step).is_integer()
+                if p.key not in LEVEL_KEYS and not p.key.startswith("level_") and not p.key.endswith("_hour")
+                and float(p.step).is_integer()
                 and float(p.default).is_integer() and p.default >= 2]
 
     def scaled(self, params: dict, factor: float) -> dict:
@@ -138,7 +141,7 @@ class Strategy:
             "key": self.key, "name": self.name, "summary": self.summary, "rules": self.rules_text,
             "worksWhen": self.works_when, "failsWhen": self.fails_when, "exercise": self.exercise,
             "params": [p.to_dict() for p in self.params], "benchmark": self.benchmark, "canShort": self.can_short,
-            "intradayOnly": self.intraday_only, "suggestedTimeframe": self.suggested_timeframe,
+            "intradayOnly": self.intraday_only, "suggestedTimeframe": self.suggested_timeframe, "custom": self.custom,
         }
 
 

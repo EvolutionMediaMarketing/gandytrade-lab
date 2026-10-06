@@ -93,6 +93,14 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None, or
             db.rollback()
             log.exception("Price order pass failed")
             stats["errors"] += 1
+        # Strategies made in the builder: keep the library in step (they may have been saved in the app).
+        try:
+            from .strategies import builder as strategy_builder
+
+            strategy_builder.sync(db)
+        except Exception:
+            db.rollback()
+            log.exception("Loading builder strategies failed")
         # Automatic runs act on newly finished candles (after stops above, as in the backtester).
         try:
             touched_accounts |= auto.run_due(db, last_looked if last_looked is not None else {}, now)
