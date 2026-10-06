@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress,
 } from "./types";
 
 export class ApiError extends Error {
@@ -103,6 +103,12 @@ export const api = {
     trail_distance?: number; clear_trail?: boolean }) =>
     request<PriceOrder>(`/api/paper/price-orders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
+  course: () => request<CourseProgress>("/api/course"),
+  courseStart: (week: number) => request<CourseProgress>(`/api/course/${week}/start`, { method: "POST" }),
+  courseQuiz: (week: number, score: number) =>
+    request<CourseProgress>(`/api/course/${week}/quiz`, { method: "POST", body: JSON.stringify({ score }) }),
+  courseTask: (week: number, done: boolean, note = "") =>
+    request<CourseProgress>(`/api/course/${week}/task`, { method: "POST", body: JSON.stringify({ done, note }) }),
   journal: () => request<{ trades: JournalTrade[]; limited: boolean }>("/api/paper/journal"),
   setTrailing: (id: number, distance: number | null) =>
     request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/trailing`, { method: "POST", body: JSON.stringify({ distance }) }),

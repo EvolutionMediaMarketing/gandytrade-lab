@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import CourseView from "./CourseView";
 import type { StrategyInfo } from "./types";
 
 const GLOSSARY: [string, string][] = [
@@ -19,9 +20,16 @@ const GLOSSARY: [string, string][] = [
   ["Pence (GBX)", "London share prices are usually quoted in pence: 380 means £3.80 per share."],
 ];
 
-export default function LearnPage({ onBacktest }: { onBacktest: (strategy: string) => void }) {
+type Tab = "course" | "strategies" | "words";
+
+export default function LearnPage({ onBacktest, onGo, onAuthError }: {
+  onBacktest: (strategy: string) => void;
+  onGo: (page: "charts" | "backtest" | "paper" | "journal" | "review" | "tools") => void;
+  onAuthError: (err: unknown) => void;
+}) {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("course");
 
   useEffect(() => {
     api.strategies().then((r) => setStrategies(r.strategies)).catch(() => undefined);
@@ -29,6 +37,15 @@ export default function LearnPage({ onBacktest }: { onBacktest: (strategy: strin
 
   return (
     <div className="page learn">
+      <div className="segmented learn-tabs" role="tablist" aria-label="Learn">
+        <button type="button" role="tab" aria-selected={tab === "course"} className={tab === "course" ? "on" : ""} onClick={() => setTab("course")}>12-week course</button>
+        <button type="button" role="tab" aria-selected={tab === "strategies"} className={tab === "strategies" ? "on" : ""} onClick={() => setTab("strategies")}>Strategies</button>
+        <button type="button" role="tab" aria-selected={tab === "words"} className={tab === "words" ? "on" : ""} onClick={() => setTab("words")}>Words you'll meet</button>
+      </div>
+
+      {tab === "course" && <CourseView onGo={onGo} onAuthError={onAuthError} />}
+
+      {tab === "strategies" && <>
       <section className="learn-intro">
         <h2>Strategies</h2>
         <p className="muted">Each strategy is a set of fixed rules. Read how it works, when it tends to work and fail, then test it yourself. Nothing here is a recommendation to trade.</p>
@@ -70,6 +87,9 @@ export default function LearnPage({ onBacktest }: { onBacktest: (strategy: strin
         })}
       </div>
 
+      </>}
+
+      {tab === "words" && (
       <section className="card glossary">
         <h2>Words you'll meet</h2>
         <dl>
@@ -78,6 +98,7 @@ export default function LearnPage({ onBacktest }: { onBacktest: (strategy: strin
           ))}
         </dl>
       </section>
+      )}
     </div>
   );
 }

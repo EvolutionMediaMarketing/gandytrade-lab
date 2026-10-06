@@ -85,7 +85,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 | Background worker (**done**) | Fetches prices on schedule and fills paper orders, stops and targets | Separate container |
 | Trade journal | Notes, chart snapshot, reason for entry and a mood tag on every trade | Journal page |
 | Performance dashboard (**done**) | Equity curve, win rate, average win vs average loss, expectancy, drawdown, rule score, per account | Dashboard page |
-| Learning path | The 12-week course, unlocked week by week, each with short lessons, a quiz and one task in the app | Learn section |
+| Learning path (**done**) | The 12-week course, unlocked week by week, each with short lessons, a quiz and one task in the app | Learn page, 12-week course tab |
 | Pre-trade checklist (**done**) | Trend direction, stop-loss, position size and a one-sentence reason; the trade can't be placed until complete | Trade panel |
 | Rule score (**done**) | Each trade scored on whether the plan was followed, separately from profit | Journal and dashboard |
 | Weekly review (**done**) | A guided 20-minute review: best and worst trade, rules broken, one focus for next week | Weekly page |
@@ -100,7 +100,7 @@ Phase 3 lets you trade live prices with pretend money, by hand or automatically,
 - [ ] Manual and automatic paper trading both work on forex, commodities and US stocks
 - [ ] Every paper order passes the pre-trade checklist and risk guard
 - [ ] Journal, dashboard, weekly review and rule score are in use
-- [ ] Weeks 1 to 12 of the learning path are written and unlock in order
+- [x] Weeks 1 to 12 of the learning path are written and unlock in order
 - [ ] Forward-test results line up with backtests of the same period, allowing for costs
 
 ## Phase 4: practice and stress-testing

@@ -732,3 +732,11 @@ export interface PriceOrder {
   placedMid: number; precision: number; createdAt: string | null; expiresAt: string | null; finishedAt: string | null;
   message: string; tradeId: number | null; reason: string; ruleFlags: string[]; trailDistance: number | null;
 }
+
+/** 12-week course progress (backend: app/course.py). */
+export interface CourseWeek {
+  week: number; unlocked: boolean; complete: boolean; startedAt: string | null;
+  quizScore: number; quizPassed: boolean; quizPassedAt: string | null;
+  task: "auto" | "self" | "plan"; taskDone: boolean; taskDoneAt: string | null; taskDetail: string; note: string;
+}
+export interface CourseProgress { weeks: CourseWeek[]; completed: number; current: number | null; passMark: number; questions: number }

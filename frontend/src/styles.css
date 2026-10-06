@@ -637,3 +637,39 @@ ul.plain { margin: 0; padding-left: 18px; }
 .topup-row input { width: 130px; }
 .topup-next { align-self: center; }
 .deposit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+/* 12-week course */
+.learn-tabs { justify-self: start; }
+.course { display: grid; gap: 12px; }
+.course-progress .small-text { margin: 0 0 8px; }
+.week-strip { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.week-chip { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; cursor: pointer; }
+.week-chip.on { border-color: var(--accent); background: rgba(52, 211, 153, 0.08); }
+.week-chip.done .week-num { background: var(--accent); color: var(--accent-ink); }
+.week-chip.locked { opacity: 0.45; cursor: not-allowed; }
+.week-num { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2);
+  font-family: var(--mono); font-size: 11.5px; }
+.week-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.week { display: grid; gap: 16px; padding: 20px; }
+.week header h2 { margin: 2px 0 4px; font-size: 22px; }
+.week-goal { margin: 0; color: var(--muted); }
+.lesson h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 16px; }
+.lesson-num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.lesson p { margin: 0 0 8px; line-height: 1.6; max-width: 70ch; }
+.quiz, .task { border-top: 1px solid var(--line); padding-top: 14px; }
+.quiz h3, .task h3 { margin: 0 0 8px; font-size: 16px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.quiz ol { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 12px; }
+.quiz-q p { margin: 0 0 6px; }
+.quiz-options { display: grid; gap: 4px; }
+.quiz-option { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; font-size: 13.5px; }
+.quiz-option input { margin-top: 3px; }
+.quiz-option.chosen { border-color: #60a5fa; }
+.quiz-option.right { border-color: var(--accent); background: rgba(52, 211, 153, 0.08); }
+.quiz-option.wrong { border-color: var(--down); background: var(--danger-bg); }
+.quiz-why { margin: 6px 0 0; font-size: 13px; }
+.quiz-why span { color: var(--text); }
+.quiz-result { font-size: 14px; }
+.task p { margin: 0 0 8px; }
+.task textarea { width: 100%; font-family: var(--font); }
+.week-done { padding: 10px 14px; border-radius: var(--radius); background: rgba(52, 211, 153, 0.1); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

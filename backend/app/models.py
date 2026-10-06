@@ -388,3 +388,19 @@ class WeeklyReview(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CourseProgress(Base):
+    """One week of the 12-week course: when it was started, the best quiz score, and when its task was done."""
+
+    __tablename__ = "course_progress"
+    __table_args__ = (UniqueConstraint("user_id", "week", name="uq_course_progress_user_week"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    week: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    quiz_score: Mapped[int] = mapped_column(Integer, default=0)  # best score so far
+    quiz_passed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    task_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(String(4000), default="")  # your answer to a written task (week 12: your plan)

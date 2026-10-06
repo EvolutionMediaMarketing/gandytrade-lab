@@ -397,7 +397,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       {page === "journal" && <JournalPage onAuthError={handleAuth} onShowTrade={(t) => showTrade(t)} />}
       {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (
-        <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} />
+        <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} onGo={(p) => go(p)} onAuthError={handleAuth} />
       )}
 
       {page === "charts" && (<>
