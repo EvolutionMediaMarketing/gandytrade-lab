@@ -39,6 +39,40 @@ class PaperError(ValueError):
     """A reason the order or change can't go ahead, in plain words."""
 
 
+class TrailActive(PaperError):
+    """You moved the stop-loss of a trade whose stop is trailing: confirm, and the trailing stop is cancelled."""
+
+
+def check_trail(distance: float | None, price: float) -> float | None:
+    """A trailing distance (in price units) that makes sense, or None for off."""
+    if distance is None:
+        return None
+    if not distance or distance <= 0 or distance != distance:
+        raise PaperError("Set how far behind the price the trailing stop should follow.")
+    if distance >= price * 0.5:
+        raise PaperError("That trailing distance is more than half the price. Choose a closer one.")
+    return float(distance)
+
+
+def trail_step(t, high: float, low: float) -> bool:
+    """Move a trailing stop after a finished candle: follow its best price, never loosen. True if it moved."""
+    if not t.trail_distance:
+        return False
+    if t.side > 0:
+        t.trail_peak = max(t.trail_peak or high, high)
+        wanted = t.trail_peak - t.trail_distance
+        if wanted > t.stop:
+            t.stop = wanted
+            return True
+    else:
+        t.trail_peak = min(t.trail_peak or low, low)
+        wanted = t.trail_peak + t.trail_distance
+        if wanted < t.stop:
+            t.stop = wanted
+            return True
+    return False
+
+
 @dataclass
 class Quote:
     mid: float
@@ -252,6 +286,7 @@ class OrderRequest:
     reason: str
     mood: str = ""
     confirmed: bool = False
+    trail_distance: float | None = None
 
 
 def checklist_problems(req: OrderRequest) -> list[str]:
@@ -274,12 +309,13 @@ def open_trade(db: Session, user: User, req: OrderRequest) -> PaperTrade:
         raise PaperError("Pre-trade checklist incomplete: " + " ".join(problems))
     acct = get_account(db, user, req.account_id)
     return place(db, acct, req.symbol, req.side, req.stop, req.target, req.timeframe,
-                 trend=req.trend, reason=req.reason, mood=req.mood)
+                 trend=req.trend, reason=req.reason, mood=req.mood, trail_distance=req.trail_distance)
 
 
 def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, target: float | None, timeframe: str, *,
           trend: str = "", reason: str = "", mood: str = "", source: str = "manual", strategy: str = "",
-          auto_run_id: int | None = None, order: "Triggered | None" = None) -> PaperTrade:
+          auto_run_id: int | None = None, order: "Triggered | None" = None,
+          trail_distance: float | None = None) -> PaperTrade:
     """Open a paper trade. Manual and automatic trades, and price orders, go through exactly the same safeguards:
     the account's pause and daily loss limit, fresh prices, risk sizing, buying power and the open-risk limit.
 
@@ -306,8 +342,8 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
     fill = book.fill(mid, buying, spread)
     if (fill - stop) * side <= 0:
         if order:
-            raise PaperError(f"The price jumped past your stop-loss as well as your order's level "
-                             f"(it reached {mid:.{symbol.precision}f}), so the trade wasn't opened.")
+            raise PaperError(f"The price jumped past your stop-loss (it reached {mid:.{symbol.precision}f}), "
+                             "so the trade wasn't opened.")
         raise PaperError("The stop-loss is on the wrong side of the current price. "
                          f"The price is now about {mid:.{symbol.precision}f}.")
     if target is not None and (target - fill) * side <= 0:
@@ -315,6 +351,10 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
             target = None  # as in the backtester: the exit rule manages the trade instead
         else:
             raise PaperError("The target is on the wrong side of the current price.")
+
+    if trail_distance is not None and source == "auto":
+        raise PaperError("Automatic runs follow their strategy's own exit rules, so they can't have a trailing stop.")
+    trail_distance = check_trail(trail_distance, mid)
 
     rate = conv.rate(time.time())
     risk = RiskSettings(acct.risk_pct, acct.daily_loss_pct, acct.max_drawdown_pct).cleaned()
@@ -369,6 +409,7 @@ def place(db: Session, acct: PaperAccount, code: str, side: int, stop: float, ta
         stop=stop, initial_stop=stop, target=target, risk_gbp=risk_gbp, exit_reason="",
         last_checked_ts=_bar_index_ts(q), source=source, strategy=strategy[:40], trend=trend, reason=reason.strip()[:300],
         mood=mood[:20], notes="", lesson="", rule_flags=flags, rule_score=None, auto_run_id=auto_run_id,
+        trail_distance=trail_distance, trail_peak=mid if trail_distance else None,
     )
     db.add(t)
     db.flush()
@@ -405,8 +446,15 @@ def get_trade(db: Session, user: User, trade_id: int) -> tuple[PaperTrade, Paper
 
 
 def modify(db: Session, user: User, trade_id: int, stop: float | None = None, target: float | None = None,
-           clear_target: bool = False, notes: str | None = None, lesson: str | None = None, mood: str | None = None) -> PaperTrade:
+           clear_target: bool = False, notes: str | None = None, lesson: str | None = None, mood: str | None = None,
+           cancel_trail: bool = False) -> PaperTrade:
     t, acct = get_trade(db, user, trade_id)
+    if stop is not None and t.status == "open" and t.trail_distance:
+        if not cancel_trail:
+            raise TrailActive("This trade has a trailing stop. Setting the stop-loss yourself will cancel the trailing "
+                              "stop, and the stop will then stay where you put it.")
+        db.add(PaperEvent(trade_id=t.id, kind="trail_off", detail="Trailing stop cancelled: stop-loss set by you"))
+        t.trail_distance, t.trail_peak = None, None
     if t.status == "open" and (stop is not None or target is not None or clear_target):
         symbol = lookup(db, t.symbol)
         q = latest_quote(db, symbol)
@@ -441,6 +489,36 @@ def modify(db: Session, user: User, trade_id: int, stop: float | None = None, ta
         t.lesson = lesson[:500]
     if mood is not None:
         t.mood = mood[:20]
+    db.commit()
+    return t
+
+
+def set_trailing(db: Session, user: User, trade_id: int, distance: float | None) -> PaperTrade:
+    """Switch a trade's trailing stop on (distance in price units behind the price) or off. Switching it on
+    starts from the current price, and moves the stop at once if that is tighter than where it is now."""
+    t, acct = get_trade(db, user, trade_id)
+    if t.status != "open":
+        raise PaperError("This trade is already closed.")
+    if t.source == "auto":
+        raise PaperError("Automatic runs follow their strategy's own exit rules, so they can't have a trailing stop.")
+    symbol = lookup(db, t.symbol)
+    q = latest_quote(db, symbol)
+    if distance is None:
+        if t.trail_distance:
+            db.add(PaperEvent(trade_id=t.id, kind="trail_off", mid=q.mid, quote_ts=q.ts, quote_source=q.source,
+                              detail="Trailing stop switched off; the stop-loss stays where it is"))
+        t.trail_distance, t.trail_peak = None, None
+        db.commit()
+        return t
+    distance = check_trail(distance, q.mid)
+    old = t.stop
+    t.trail_distance = distance
+    # Follow the price from now on, and only ever tighten.
+    t.trail_peak = q.mid
+    t.stop = max(t.stop, q.mid - distance) if t.side > 0 else min(t.stop, q.mid + distance)
+    p = symbol.precision
+    db.add(PaperEvent(trade_id=t.id, kind="trail_on", mid=q.mid, quote_ts=q.ts, quote_source=q.source,
+                      detail=f"Trailing stop on, {distance:.{p}f} behind the price" + (f"; stop {old:.{p}f} → {t.stop:.{p}f}" if t.stop != old else "")))
     db.commit()
     return t
 
@@ -510,6 +588,7 @@ def check_trade(db: Session, acct: PaperAccount, t: PaperTrade, q: Quote) -> boo
     """
     tf_seconds = get_timeframe(q.timeframe).seconds
     now = time.time()
+    stop_before = t.stop
     for b in q.bars:
         if b.ts <= t.last_checked_ts:
             continue
@@ -521,18 +600,32 @@ def check_trade(db: Session, acct: PaperAccount, t: PaperTrade, q: Quote) -> boo
             gapped = (b.open - t.target) * t.side >= 0
             hit = (b.open if gapped else t.target, "Target reached", "target")
         if hit:
+            _note_trail(db, t, stop_before, q)
+            if t.trail_distance and hit[2] == "stop":
+                hit = (hit[0], hit[1].replace("Stop-loss", "Trailing stop"), hit[2])
             close(db, acct, t, hit[0], b.ts, q.source, hit[1], hit[2], b.spread)
             return True
         if b.ts + tf_seconds <= now:
             t.last_checked_ts = b.ts  # finished candles are never checked twice; the forming one is
+            # A trailing stop moves only on finished candles, after the candle was checked against the old stop
+            # (within a candle we can't tell whether the high or the low came first).
+            trail_step(t, b.high, b.low)
+    _note_trail(db, t, stop_before, q)
     # The latest price itself (covers the rest of the candle the trade was opened in).
     if (q.mid - t.stop) * t.side <= 0:
-        close(db, acct, t, q.mid, q.ts, q.source, "Stop-loss", "stop", q.spread)
+        close(db, acct, t, q.mid, q.ts, q.source, "Trailing stop" if t.trail_distance else "Stop-loss", "stop", q.spread)
         return True
     if t.target is not None and (q.mid - t.target) * t.side >= 0:
         close(db, acct, t, q.mid, q.ts, q.source, "Target reached", "target", q.spread)
         return True
     return False
+
+
+def _note_trail(db: Session, t: PaperTrade, before: float, q: Quote) -> None:
+    """One fill-log line per check when the trailing stop moved, rather than one per candle."""
+    if t.trail_distance and t.stop != before:
+        db.add(PaperEvent(trade_id=t.id, kind="stop_trailed", mid=q.mid, quote_ts=q.ts, quote_source=q.source,
+                          detail=f"Trailing stop {before:g} → {t.stop:g}"))
 
 
 # --- Deleting an account -----------------------------------------------------------------------

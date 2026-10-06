@@ -603,3 +603,7 @@ ul.plain { margin: 0; padding-left: 18px; }
 .waiting-orders li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px;
   padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius); border-left: 3px solid var(--amber); }
 .waiting-orders .small-text { margin: 0; }
+
+/* Trailing stops */
+.trail-tag { display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; color: var(--amber); margin-top: 2px; font-family: var(--font); }
+.trail-start { font-size: 11.5px; display: block; margin-top: 2px; }

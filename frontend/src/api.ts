@@ -95,10 +95,13 @@ export const api = {
   priceOrders: (q: { account_id?: number; symbol?: string; done?: boolean }) =>
     request<{ waiting: PriceOrder[]; finished: PriceOrder[] }>(`/api/paper/price-orders?${new URLSearchParams(
       Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
-  placePriceOrder: (body: Omit<PaperOrder, "side"> & { side: "long" | "short"; level: number; expiry: string }) =>
+  placePriceOrder: (body: PaperOrder & { level: number; expiry: string; at_open?: boolean }) =>
     request<PriceOrder>("/api/paper/price-orders", { method: "POST", body: JSON.stringify(body) }),
   cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
-  changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string }) =>
+  setTrailing: (id: number, distance: number | null) =>
+    request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/trailing`, { method: "POST", body: JSON.stringify({ distance }) }),
+  changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string;
+    cancel_trail?: boolean }) =>
     request<{ trade: PaperTrade }>(`/api/paper/trades/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   closePaperTrade: (id: number) => request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/close`, { method: "POST" }),
   paperEvents: (id: number) => request<{ events: PaperEvent[] }>(`/api/paper/trades/${id}/events`),

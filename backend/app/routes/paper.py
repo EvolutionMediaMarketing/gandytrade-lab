@@ -51,6 +51,7 @@ def _trade_dict(t: PaperTrade, v: "paper.Valued | None" = None, db: Session | No
         "source": t.source, "strategy": t.strategy, "autoRunId": t.auto_run_id, "trend": t.trend, "reason": t.reason, "mood": t.mood,
         "notes": t.notes, "lesson": t.lesson, "ruleFlags": t.rule_flags or [],
         "ruleScore": t.rule_score if t.rule_score is not None else paper.score(t.rule_flags or []),
+        "trailDistance": t.trail_distance,
     }
     if db is not None:
         d["precision"], d["name"] = _market(db, t.symbol)
@@ -206,6 +207,7 @@ class OrderBody(BaseModel):
     reason: str = Field("", max_length=300)
     mood: str = Field("", max_length=20)
     confirmed: bool = False
+    trail_distance: float | None = Field(None, gt=0)  # trailing stop, in price units behind the price
 
 
 class PriceOrderBody(BaseModel):
@@ -221,6 +223,8 @@ class PriceOrderBody(BaseModel):
     mood: str = Field("", max_length=20)
     confirmed: bool = False
     expiry: str = Field("gtc", max_length=8)
+    trail_distance: float | None = Field(None, gt=0)
+    at_open: bool = False
 
 
 def _precision(db: Session, code: str) -> int:
@@ -270,7 +274,8 @@ def open_paper_trade(body: OrderBody, db: Session = Depends(get_session), user: 
         raise HTTPException(status_code=422, detail="Unknown mood.")
     req = paper.OrderRequest(account_id=body.account_id, symbol=body.symbol, side=1 if body.side == "long" else -1,
                              stop=body.stop, target=body.target, timeframe=body.timeframe, trend=body.trend,
-                             reason=body.reason, mood=body.mood, confirmed=body.confirmed)
+                             reason=body.reason, mood=body.mood, confirmed=body.confirmed,
+                             trail_distance=body.trail_distance)
     try:
         t = paper.open_trade(db, user, req)
     except (paper.PaperError, ValueError, ProviderError) as exc:
@@ -291,6 +296,7 @@ class TradeChange(BaseModel):
     notes: str | None = Field(None, max_length=2000)
     lesson: str | None = Field(None, max_length=500)
     mood: str | None = Field(None, max_length=20)
+    cancel_trail: bool = False  # you've seen the warning: setting the stop yourself cancels the trailing stop
 
 
 @router.patch("/trades/{trade_id}")
@@ -298,7 +304,23 @@ def change_trade(trade_id: int, body: TradeChange, db: Session = Depends(get_ses
     if body.mood is not None and body.mood not in MOODS:
         raise HTTPException(status_code=422, detail="Unknown mood.")
     try:
-        t = paper.modify(db, user, trade_id, body.stop, body.target, body.clear_target, body.notes, body.lesson, body.mood)
+        t = paper.modify(db, user, trade_id, body.stop, body.target, body.clear_target, body.notes, body.lesson, body.mood,
+                         cancel_trail=body.cancel_trail)
+    except paper.TrailActive as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (paper.PaperError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return {"trade": _trade_dict(t, db=db)}
+
+
+class Trailing(BaseModel):
+    distance: float | None = Field(None, gt=0)  # None switches it off
+
+
+@router.post("/trades/{trade_id}/trailing")
+def trailing(trade_id: int, body: Trailing, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        t = paper.set_trailing(db, user, trade_id, body.distance)
     except (paper.PaperError, ProviderError) as exc:
         raise _fail(exc) from exc
     return {"trade": _trade_dict(t, db=db)}

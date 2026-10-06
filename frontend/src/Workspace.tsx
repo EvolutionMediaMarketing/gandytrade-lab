@@ -241,6 +241,25 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       .catch(handleAuth);
   }, [prefs.symbol, handleAuth]);
 
+  // With "stop and target move with the entry" on (the default), dragging or typing the entry carries the
+  // stop-loss and target along at the same distances, so the risk stays as planned.
+  const [linked, setLinked] = useState(true);
+  const linkedRef = useRef(linked);
+  linkedRef.current = linked;
+  const precisionRef = useRef(5);
+  precisionRef.current = data?.symbol.precision ?? 5;
+  const changePlan = useCallback((next: TradePlan | null) => {
+    setPlan((prev) => {
+      if (!next || !prev || !linkedRef.current) return next;
+      if (next.entry === prev.entry || next.stop !== prev.stop || next.target !== prev.target) return next;
+      const shift = next.entry - prev.entry;
+      const round = (v: number) => Number(v.toFixed(precisionRef.current));
+      const stop = round(prev.stop + shift);
+      const target = prev.target === null ? null : round(prev.target + shift);
+      return { ...next, stop: stop > 0 ? stop : prev.stop, target: target !== null && target > 0 ? target : prev.target };
+    });
+  }, []);
+
   // A new market means a new plan.
   useEffect(() => {
     setPlan(null);
@@ -464,7 +483,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? (
-            <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={setPlan}
+            <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={changePlan}
               trade={shownTrade && data.symbol.code === shownTrade.symbol ? shownTrade : null}
               orders={data.symbol.code === prefs.symbol ? priceOrders : []} />
           ) : !error && <div className="splash">Loading chart…</div>}
@@ -472,7 +491,8 @@ export default function Workspace({ username, onSignedOut }: { username: string;
 
         {panel === "plan" && data && (
           <aside className="panel" aria-label="Trade planner">
-            <TradePlanner symbol={data.symbol} timeframe={prefs.timeframe} plan={plan} onPlanChange={setPlan} onStartFresh={startPlan}
+            <TradePlanner symbol={data.symbol} timeframe={prefs.timeframe} plan={plan} onPlanChange={changePlan} onStartFresh={startPlan}
+              linked={linked} onLinkedChange={setLinked}
               onAuthError={handleAuth} onPlaced={loadOrders} lastPrice={livePrice?.mid ?? lastClose}
               orders={priceOrders} onOrdersChanged={loadOrders} />
           </aside>

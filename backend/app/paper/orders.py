@@ -53,9 +53,13 @@ class OrderRequest:
     mood: str = ""
     confirmed: bool = False
     expiry: str = "gtc"
+    trail_distance: float | None = None
+    at_open: bool = False  # fill at the first live price after a closed market opens
 
 
 def kind_label(side: int, direction: int) -> str:
+    if direction == 0:
+        return "Buy at the open" if side > 0 else "Sell at the open"
     if side > 0:
         return "Buy stop" if direction > 0 else "Buy limit"
     return "Sell limit" if direction > 0 else "Sell stop"
@@ -111,11 +115,25 @@ def create(db: Session, user: User, req: OrderRequest) -> PriceOrder:
     if req.target is not None and (req.target - req.level) * req.side <= 0:
         raise OrderError("The target is on the wrong side of the order's price.")
     expires = expiry_time(req.expiry)
+    trail = paper.check_trail(req.trail_distance, req.level)
 
     q = paper.latest_quote(db, symbol)  # a closed market is fine: the order waits for it to open
-    if abs(req.level - q.mid) <= q.mid * 1e-6:
-        raise OrderError("That's the current price. Use “Now, at the live price” instead.")
-    direction = 1 if req.level > q.mid else -1
+    if req.at_open:
+        try:
+            paper.check_fresh(q, symbol)
+        except paper.PaperError:
+            pass  # closed, as it should be
+        else:
+            raise OrderError("The market is open now, so use “Now, at the live price” instead.")
+        if (q.mid - req.stop) * req.side <= 0:
+            raise OrderError(f"The stop-loss must be {'below' if req.side > 0 else 'above'} the last price "
+                             f"({q.mid:.{p}f}) for a {'buy' if req.side > 0 else 'sell'}.")
+        req.level, direction = q.mid, 0
+    elif abs(req.level - q.mid) <= q.mid * 1e-6:
+        raise OrderError("Your entry is at the current price. Drag the entry line to the level you want, "
+                         "or choose “Now” (or “When the market opens” if it's closed).")
+    else:
+        direction = 1 if req.level > q.mid else -1
     waiting = db.scalars(select(PriceOrder.id).where(PriceOrder.account_id == acct.id, PriceOrder.status == "waiting")).all()
     if len(waiting) >= MAX_WAITING:
         raise OrderError(f"This account already has {MAX_WAITING} waiting orders. Cancel some first.")
@@ -133,7 +151,7 @@ def create(db: Session, user: User, req: OrderRequest) -> PriceOrder:
         account_id=acct.id, symbol=symbol.code, timeframe=req.timeframe[:8], side=req.side, level=req.level,
         direction=direction, stop=req.stop, target=req.target, status="waiting", placed_mid=q.mid,
         expires_at=expires, last_checked_ts=q.bars[-1].ts if q.bars else 0, message="",
-        trend=req.trend, reason=req.reason.strip()[:300], mood=req.mood[:20], rule_flags=flags,
+        trend=req.trend, reason=req.reason.strip()[:300], mood=req.mood[:20], rule_flags=flags, trail_distance=trail,
     )
     db.add(order)
     db.commit()
@@ -170,12 +188,13 @@ def order_dict(o: PriceOrder, precision: int = 5) -> dict:
     return {
         "id": o.id, "accountId": o.account_id, "symbol": o.symbol, "timeframe": o.timeframe,
         "side": "long" if o.side > 0 else "short", "kind": kind_label(o.side, o.direction),
-        "level": o.level, "direction": "up" if o.direction > 0 else "down", "stop": o.stop, "target": o.target,
+        "level": o.level, "direction": "open" if o.direction == 0 else "up" if o.direction > 0 else "down", "stop": o.stop, "target": o.target,
         "status": o.status, "placedMid": o.placed_mid, "precision": precision,
         "createdAt": _aware(o.created_at).isoformat() if o.created_at else None,
         "expiresAt": _aware(o.expires_at).isoformat() if o.expires_at else None,
         "finishedAt": _aware(o.finished_at).isoformat() if o.finished_at else None,
         "message": o.message, "tradeId": o.trade_id, "reason": o.reason, "ruleFlags": o.rule_flags or [],
+        "trailDistance": o.trail_distance,
     }
 
 
@@ -183,9 +202,13 @@ def order_dict(o: PriceOrder, precision: int = 5) -> dict:
 
 def reached(o: PriceOrder, q: paper.Quote, now: float | None = None) -> tuple[float, int, float | None, bool] | None:
     """Whether a candle since the last check (or the latest price) reached the order's level.
-    Returns (fill level, when, recorded spread, gapped past) or None. Finished candles are never checked twice."""
+    Returns (fill level, when, recorded spread, gapped past) or None. Finished candles are never checked twice.
+    An "at the open" order fills at the opening price of the first candle since it was placed."""
     tf_seconds = get_timeframe(q.timeframe).seconds
     now = time.time() if now is None else now
+    if o.direction == 0:
+        fresh = [b for b in q.bars if b.ts > o.last_checked_ts]
+        return (fresh[0].open, fresh[0].ts, fresh[0].spread, False) if fresh else None
     for b in q.bars:
         if b.ts <= o.last_checked_ts:
             continue
@@ -244,13 +267,14 @@ def work(db: Session, last_looked: dict[str, float], check_every: dict[str, int]
             level, when, spread, gapped = hit
             acct = db.get(PaperAccount, o.account_id)
             kind = kind_label(o.side, o.direction)
-            note = f"{kind} order reached {o.level:g}" + (f"; the price jumped to {level:g}" if gapped else "")
+            note = (f"{kind}: filled at the opening price {level:g}" if o.direction == 0 else
+                    f"{kind} order reached {o.level:g}" + (f"; the price jumped to {level:g}" if gapped else ""))
             order_id = o.id
             try:
                 if acct.archived:
                     raise paper.PaperError("The paper account has been archived.")
                 t = paper.place(db, acct, o.symbol, o.side, o.stop, o.target, o.timeframe, trend=o.trend,
-                                reason=o.reason, mood=o.mood, source="manual",
+                                reason=o.reason, mood=o.mood, source="manual", trail_distance=o.trail_distance,
                                 order=paper.Triggered(level, when, spread, list(o.rule_flags or []), note))
             except paper.PaperError as exc:
                 db.rollback()

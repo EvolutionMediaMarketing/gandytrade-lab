@@ -174,9 +174,15 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
                           <td className="mono">
                             <EditPrice value={t.stop} precision={t.precision ?? 5} label="stop-loss" onSave={(v) => {
                               const wider = t.side === "long" ? v < t.stop : v > t.stop;
+                              if (t.trailDistance && !window.confirm(
+                                "This trade has a trailing stop.\n\nSetting the stop-loss yourself will CANCEL the trailing stop: " +
+                                "the stop will then stay where you put it and stop following the price.\n\nCancel the trailing stop and set this stop-loss?")) return;
                               if (wider && !window.confirm("That moves the stop-loss further away, which raises your risk. It will be marked in your rule score. Go ahead?")) return;
-                              act(api.changePaperTrade(t.id, { stop: v }));
+                              act(api.changePaperTrade(t.id, { stop: v, cancel_trail: !!t.trailDistance }));
                             }} />
+                            {t.source !== "auto" && (
+                              <TrailControl trade={t} onChange={(d) => act(api.setTrailing(t.id, d))} />
+                            )}
                           </td>
                           <td className="mono">
                             <EditPrice value={t.target} precision={t.precision ?? 5} label="target" onSave={(v) => act(api.changePaperTrade(t.id, { target: v }))} />
@@ -306,6 +312,36 @@ function PriceOrders({ accountId, openCount, onAuthError, onFilled }: {
         </table>
       </div>
     </div>
+  );
+}
+
+/** Under an open trade's stop-loss: shows a trailing stop, or offers to start one. */
+function TrailControl({ trade, onChange }: { trade: PaperTrade; onChange: (distance: number | null) => void }) {
+  const p = trade.precision ?? 5;
+  if (trade.trailDistance) {
+    return (
+      <div className="trail-tag">
+        <span title="The stop-loss follows the best price since trailing started, this far behind it, and never moves back.">
+          Trailing {trade.trailDistance.toFixed(p)}
+        </span>
+        <button type="button" className="link-button" onClick={() => {
+          if (window.confirm("Stop trailing? The stop-loss stays where it is now.")) onChange(null);
+        }}>Stop</button>
+      </div>
+    );
+  }
+  const suggested = Math.abs(trade.entryPrice - (trade.initialStop ?? trade.stop));
+  return (
+    <button type="button" className="link-button trail-start" onClick={() => {
+      const typed = window.prompt(
+        "Trail the stop-loss behind the price.\n\nHow far behind? The suggestion is this trade's starting risk " +
+        "(entry to the original stop), which for a stop planned in this app is 2 × the typical daily move. " +
+        "Much closer and normal wobbles will stop you out.\n\nThe stop only ever tightens; it starts from the current price.",
+        suggested.toFixed(p));
+      if (typed === null) return;
+      const d = Number(typed);
+      if (Number.isFinite(d) && d > 0) onChange(d);
+    }}>Trail it</button>
   );
 }
 

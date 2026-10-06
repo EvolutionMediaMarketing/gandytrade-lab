@@ -317,6 +317,8 @@ export interface SignalsResponse {
 // --- Paper trading ---
 
 export interface PaperTrade {
+  /** Trailing stop distance behind the price (price units), or null when the stop is fixed. */
+  trailDistance?: number | null;
   id: number;
   symbol: string;
   timeframe: string;
@@ -407,6 +409,8 @@ export interface PaperOrder {
   reason: string;
   mood: string;
   confirmed: boolean;
+  /** Trailing stop: how far behind the price it follows (price units). Omit for a fixed stop. */
+  trail_distance?: number | null;
 }
 
 // --- Target odds ---
@@ -706,8 +710,9 @@ export type WalkForward = { warnings: { level: string; text: string }[]; sample:
 /** A paper order waiting for a price (backend: app/paper/orders.py). */
 export interface PriceOrder {
   id: number; accountId: number; symbol: string; timeframe: string; side: "long" | "short";
-  kind: "Buy stop" | "Buy limit" | "Sell stop" | "Sell limit"; level: number; direction: "up" | "down";
+  kind: "Buy stop" | "Buy limit" | "Sell stop" | "Sell limit" | "Buy at the open" | "Sell at the open"; level: number;
+  direction: "up" | "down" | "open";
   stop: number; target: number | null; status: "waiting" | "filled" | "cancelled" | "expired" | "failed";
   placedMid: number; precision: number; createdAt: string | null; expiresAt: string | null; finishedAt: string | null;
-  message: string; tradeId: number | null; reason: string; ruleFlags: string[];
+  message: string; tradeId: number | null; reason: string; ruleFlags: string[]; trailDistance: number | null;
 }

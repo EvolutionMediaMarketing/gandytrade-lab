@@ -210,6 +210,10 @@ class PaperTrade(Base):
     lesson: Mapped[str] = mapped_column(String(500), default="")
     rule_flags: Mapped[list] = mapped_column(JSON, default=list)  # rules broken, in plain words
     rule_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Trailing stop: the stop follows the best price since it was switched on, `trail_distance` behind it
+    # (price units), and only ever tightens. None = off. `trail_peak` = best price so far (high for a buy, low for a short).
+    trail_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trail_peak: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Set when an automatic paper-trading run opened this trade.
     auto_run_id: Mapped[int | None] = mapped_column(ForeignKey("auto_runs.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -247,6 +251,7 @@ class PriceOrder(Base):
     reason: Mapped[str] = mapped_column(String(300), default="")
     mood: Mapped[str] = mapped_column(String(20), default="")
     rule_flags: Mapped[list] = mapped_column(JSON, default=list)
+    trail_distance: Mapped[float | None] = mapped_column(Float, nullable=True)  # trailing stop for the trade it opens
 
 
 class PaperEvent(Base):

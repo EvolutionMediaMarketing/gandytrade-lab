@@ -31,11 +31,20 @@ interface Props {
   /** Paper price orders waiting on this market. */
   orders?: PriceOrder[];
   onOrdersChanged?: () => void;
+  /** Stop-loss and target move with the entry line. */
+  linked?: boolean;
+  onLinkedChange?: (on: boolean) => void;
 }
 
 /** Plan a trade on the chart: drag the lines, see the size, the risk and the reward in pounds. */
 export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlanChange, onStartFresh, onAuthError, lastPrice = null,
-  orders = [], onOrdersChanged }: Props) {
+  orders = [], onOrdersChanged, linked = true, onLinkedChange }: Props) {
+  // The typical daily move (ATR), to describe stop distances in a way that means something.
+  const [dailyAtr, setDailyAtr] = useState<number | null>(null);
+  useEffect(() => {
+    setDailyAtr(null);
+    api.quote(symbol.code).then((q) => setDailyAtr(q.dailyAtr)).catch(() => undefined);
+  }, [symbol.code]);
   const [settings, setSettings] = useState(loadSettings);
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);
@@ -144,6 +153,17 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
           onChange={(e) => setSettings((s) => ({ ...s, risk: Math.min(2, Math.max(0.1, Number(e.target.value) || 1)) }))} /></label>
       </div>
 
+      <label className="check-row" title="Drag or type the entry and the stop-loss and target keep the same distances, so the risk stays as planned.">
+        <input type="checkbox" checked={linked} onChange={(e) => onLinkedChange?.(e.target.checked)} />
+        Stop-loss and target move with the entry
+      </label>
+      {dailyAtr !== null && risk > 0 && (
+        <p className="muted small-text">
+          Stop distance: {risk.toFixed(p)}, about <b>{(risk / dailyAtr).toFixed(1)} ×</b> the typical daily move ({dailyAtr.toFixed(p)}).
+          {risk / dailyAtr < 1 ? " That's tight: ordinary day-to-day wobbles often reach it." : risk / dailyAtr > 4 ? " That's wide: the trade will be small to keep the risk to plan." : " A sensible range is 1.5 to 3 ×."}
+        </p>
+      )}
+
       <div className="planner-actions">
         <button type="button" className="ghost small" onClick={() => onStartFresh(side)}>Start again from latest price</button>
         {plan.target === null
@@ -190,7 +210,7 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
 
       <Checkout
         accounts={accounts} accountId={accountId} onAccount={setAccountId} symbol={symbol} timeframe={timeframe}
-        plan={plan} side={side} out={out} cashShort={cashShort} lastPrice={lastPrice}
+        plan={plan} side={side} out={out} cashShort={cashShort} lastPrice={lastPrice} dailyAtr={dailyAtr}
         onPlaced={() => {
           api.paperAccounts().then((r) => setAccounts(r.accounts.filter((a) => !a.archived))).catch(() => undefined);
           onPlaced();
@@ -263,15 +283,26 @@ const MOODS = [
 ];
 
 /** The pre-trade checklist. The order can't be placed until every item is done. */
-function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, side, out, cashShort, lastPrice, onPlaced, onAuthError }: {
+function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, side, out, cashShort, lastPrice, dailyAtr, onPlaced, onAuthError }: {
   accounts: PaperAccount[]; accountId: number | null; onAccount: (id: number | null) => void; symbol: SymbolInfo;
   timeframe: string; plan: TradePlan; side: "long" | "short"; out: PositionSize | null; cashShort: boolean;
-  lastPrice: number | null; onPlaced: () => void; onAuthError: (err: unknown) => void;
+  lastPrice: number | null; dailyAtr: number | null; onPlaced: () => void; onAuthError: (err: unknown) => void;
 }) {
-  const [when, setWhen] = useState<"now" | "level">("now");
+  const [when, setWhen] = useState<"now" | "level" | "open">("now");
+  // Trailing stop: off by default; its distance starts as the planned stop distance until you type your own.
+  const [trailOn, setTrailOn] = useState(false);
+  const [trailText, setTrailText] = useState("");
+  const trailEdited = useRef(false);
+  const planned = Math.abs(plan.entry - plan.stop);
+  useEffect(() => {
+    if (!trailEdited.current) setTrailText(planned > 0 ? planned.toFixed(symbol.precision) : "");
+  }, [planned, symbol.precision]);
+  const trailDistance = trailOn ? Number(trailText) : null;
+  const trailOk = !trailOn || (Number.isFinite(trailDistance) && (trailDistance ?? 0) > 0 && (trailDistance ?? 0) < plan.entry * 0.5);
   const [expiry, setExpiry] = useState("gtc");
   const priced = orderKind(side, plan.entry, lastPrice);
   const atLevel = when === "level";
+  const atOpen = when === "open";
   const [open, setOpen] = useState(false);
   const [trend, setTrend] = useState("");
   const [reason, setReason] = useState("");
@@ -294,21 +325,25 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
     { ok: reason.trim().length >= 10, text: "One-sentence reason written" },
     { ok: confirmed, text: "Size and £ at risk checked" },
   ];
-  const ready = checks.every((c) => c.ok) && !!out && !cashShort && !account?.block && (!atLevel || !!priced);
+  const ready = checks.every((c) => c.ok) && !!out && !cashShort && !account?.block && (!atLevel || !!priced) && trailOk;
 
   function place() {
     if (!account) return;
     setBusy(true);
     setError(null);
-    if (atLevel && priced) {
+    if ((atLevel && priced) || atOpen) {
       api
         .placePriceOrder({
           account_id: account.id, symbol: symbol.code, side, level: plan.entry, stop: plan.stop, target: plan.target, timeframe,
-          trend, reason: reason.trim(), mood, confirmed, expiry,
+          trend, reason: reason.trim(), mood, confirmed, expiry: atOpen ? "week" : expiry, trail_distance: trailDistance,
+          at_open: atOpen,
         })
         .then((o) => {
-          setDone(`${o.kind} order placed on “${account.name}” at ${o.level.toFixed(symbol.precision)}. The worker checks it every minute ` +
-            "and opens the trade when the price gets there, through the account's safeguards. It's the dotted line on the chart.");
+          setDone(atOpen
+            ? `${o.kind} order placed on “${account.name}”. It fills at the first live price when the market opens, sized on ` +
+              "the account then. If the price opens past your stop-loss, it's cancelled and you'll get an alert."
+            : `${o.kind} order placed on “${account.name}” at ${o.level.toFixed(symbol.precision)}. The worker checks it every minute ` +
+              "and opens the trade when the price gets there, through the account's safeguards. It's the dotted line on the chart.");
           setReason("");
           setTrend("");
           setMood("");
@@ -326,7 +361,7 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
     api
       .placePaperTrade({
         account_id: account.id, symbol: symbol.code, side, stop: plan.stop, target: plan.target, timeframe,
-        trend, reason: reason.trim(), mood, confirmed,
+        trend, reason: reason.trim(), mood, confirmed, trail_distance: trailDistance,
       })
       .then((r) => {
         setDone(`Placed on “${account.name}”: ${side === "long" ? "bought" : "shorted"} at ${r.trade.entryPrice.toFixed(symbol.precision)}. ` +
@@ -376,7 +411,16 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
         <div className="segmented wide" role="radiogroup" aria-label="When to trade">
           <button type="button" className={!atLevel ? "on" : ""} onClick={() => setWhen("now")}>Now, at the live price</button>
           <button type="button" className={atLevel ? "on" : ""} onClick={() => setWhen("level")}>When the price reaches my entry</button>
+          <button type="button" className={atOpen ? "on" : ""} onClick={() => setWhen("open")}
+            title="For a closed market: fill at the first live price when it opens">When the market opens</button>
         </div>
+        {atOpen && (
+          <p className="note">
+            For when the market is closed. It fills at the <b>opening price</b>, which can be some way from the last price because
+            of overnight news. The size is worked out then, so the risk stays at your setting; if the price opens past your
+            stop-loss, nothing is traded and you'll get an alert. Lapses after a week if not filled.
+          </p>
+        )}
         {atLevel && (priced ? (
           <p className="note">
             <b>{priced.kind}</b> at {plan.entry.toFixed(symbol.precision)}: {priced.explain}
@@ -385,7 +429,7 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
         ) : (
           <p className="warn caution">Your entry is at the current price. Drag the entry line to the level you want, or trade now.</p>
         ))}
-        {atLevel && (
+        {atLevel && priced && (
           <label className="form-row">
             <span className="field-label">Expires</span>
             <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
@@ -400,6 +444,31 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
           {account.openRiskLimit - account.openRisk < (out?.riskGbp ?? 0) && " This trade will be trimmed to fit, or refused if there's no room."}
         </p>
       )}
+
+      <div className="form-row">
+        <span className="field-label">Stop-loss</span>
+        <div className="segmented wide" role="radiogroup" aria-label="Stop-loss type">
+          <button type="button" className={!trailOn ? "on" : ""} onClick={() => setTrailOn(false)}>Fixed</button>
+          <button type="button" className={trailOn ? "on" : ""} onClick={() => setTrailOn(true)}>Trailing</button>
+        </div>
+        {trailOn && (
+          <>
+            <label className="form-row">
+              <span className="field-label">Follows this far behind the price</span>
+              <input type="number" step="any" min={0} value={trailText}
+                onChange={(e) => { trailEdited.current = true; setTrailText(e.target.value); }} />
+            </label>
+            <p className="muted small-text">
+              The stop starts at your stop-loss line, then follows the best price since the trade opened, {trailDistance && trailDistance > 0
+                ? <>{trailDistance.toFixed(symbol.precision)}{dailyAtr ? <> (about {(trailDistance / dailyAtr).toFixed(1)} × the typical daily move)</> : null}</>
+                : "this far"} behind it. It only ever tightens, so it locks in profit as the price moves your way.
+              {" "}2 to 3 × the daily move is sensible; much closer and ordinary wobbles stop you out early. If you later set the stop
+              yourself, the trailing stop is cancelled (you'll be warned first).
+            </p>
+            {!trailOk && <p className="warn stop">Set a trailing distance above zero and less than half the price.</p>}
+          </>
+        )}
+      </div>
 
       <div className="form-row">
         <span className="field-label">Which way is the market trending on this chart?</span>
@@ -439,13 +508,19 @@ function Checkout({ accounts, accountId, onAccount, symbol, timeframe, plan, sid
       </ul>
 
       {error && <p className="warn stop">{error}</p>}
+      {error && when === "now" && /market's closed/i.test(error) && (
+        <button type="button" className="ghost small" onClick={() => { setWhen("open"); setError(null); }}>
+          Queue it for when the market opens instead
+        </button>
+      )}
       <div className="planner-actions">
         <button type="button" className="primary" disabled={!ready || busy} onClick={place}>
-          {busy ? "Placing…" : atLevel && priced ? `Place ${priced.kind.toLowerCase()} order` : `Place paper ${side === "long" ? "buy" : "short"}`}
+          {busy ? "Placing…" : atOpen ? `Place ${side === "long" ? "buy" : "sell"} for the open`
+            : atLevel && priced ? `Place ${priced.kind.toLowerCase()} order` : `Place paper ${side === "long" ? "buy" : "short"}`}
         </button>
         <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
       </div>
-      <p className="muted small-text">{atLevel
+      <p className="muted small-text">{atOpen ? "Paper only." : atLevel
         ? "It fills at your entry, or at the price it jumped to if it gaps past (plus the usual spread), sized on the balance at that moment. If a safeguard refuses it then, nothing is traded and you get an alert saying why. Paper only."
         : "It fills at the live price now (plus the usual spread), which may differ slightly from the entry line."}</p>
     </div>

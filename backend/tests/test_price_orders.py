@@ -166,3 +166,35 @@ def test_expiry_times():
 def test_kind_labels():
     assert orders.kind_label(1, 1) == "Buy stop" and orders.kind_label(1, -1) == "Buy limit"
     assert orders.kind_label(-1, -1) == "Sell stop" and orders.kind_label(-1, 1) == "Sell limit"
+
+
+def test_at_the_open_waits_for_the_market_and_fills_at_the_opening_price(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    # While the market is open, "at the open" is refused.
+    assert "market is open" in place(signed_in, cfd, at_open=True, level=1.25, stop=1.2450).json()["detail"]
+    # Closed: the last price is hours old.
+    market.ts = NOW - 3 * 3600
+    market.bars = [bar(NOW - 3 * 3600, 1.2500, 1.2500, 1.2500, 1.2500)]
+    o = place(signed_in, cfd, at_open=True, level=1.25, stop=1.2450, target=None).json()
+    assert o["kind"] == "Buy at the open" and o["direction"] == "open"
+    assert work()["filled"] == 0  # still closed
+    # It opens 0.0030 higher: filled at that opening price, sized then.
+    market.ts = NOW
+    market.bars = [bar(NOW - MINUTE, 1.2530, 1.2540, 1.2525, 1.2535)]
+    market.mid = 1.2535
+    assert work()["filled"] == 1
+    t = signed_in.get(f"/api/paper/accounts/{cfd}").json()["open"][0]
+    assert t["entryMid"] == 1.253 and t["riskGbp"] == pytest.approx(2.0, abs=0.02)
+
+
+def test_at_the_open_gap_past_the_stop_is_not_traded(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    market.ts = NOW - 3 * 3600
+    market.bars = [bar(NOW - 3 * 3600, 1.2500, 1.2500, 1.2500, 1.2500)]
+    place(signed_in, cfd, at_open=True, level=1.25, stop=1.2450, target=None)
+    market.ts = NOW
+    market.bars = [bar(NOW - MINUTE, 1.2400, 1.2410, 1.2390, 1.2405)]
+    market.mid = 1.2405
+    assert work()["failed"] == 1
+    o = signed_in.get(f"/api/paper/price-orders?account_id={cfd}&done=true").json()["finished"][0]
+    assert "jumped past your stop-loss" in o["message"]
