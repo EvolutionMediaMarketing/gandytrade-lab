@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
-import type { AlertStatus, BackupStatus, PaperAccount } from "./types";
+import type { CalendarStatus, AlertStatus, BackupStatus, PaperAccount } from "./types";
 
 interface Rule {
   key: "risk_pct" | "max_open_risk_pct" | "daily_loss_pct" | "max_drawdown_pct";
@@ -48,6 +48,7 @@ export default function SettingsPage({ onAuthError }: { onAuthError: (err: unkno
       {accounts.filter((a) => !a.archived).map((a) => <AccountSettings key={a.id} account={a} onSaved={load} onAuthError={onAuthError} />)}
       <Alerts onAuthError={onAuthError} />
       <Backups onAuthError={onAuthError} />
+      <CalendarDates onAuthError={onAuthError} />
       {accounts.some((a) => a.archived) && (
         <section className="card">
           <h3>Archived accounts</h3>
@@ -251,3 +252,53 @@ function Alerts({ onAuthError }: { onAuthError: (err: unknown) => void }) {
     </section>
   );
 }
+
+
+/** Economic calendar: how far ahead each official schedule goes, and a button to check the publishers for new dates. */
+function CalendarDates({ onAuthError }: { onAuthError: (err: unknown) => void }) {
+  const [status, setStatus] = useState<CalendarStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+  useEffect(() => { api.calendarStatus().then(setStatus).catch(onAuthError); }, [onAuthError]);
+  const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
+  return (
+    <section className="card calendar-dates">
+      <h3>Economic calendar dates</h3>
+      <p className="muted small-text">
+        Interest rate decisions, and inflation and jobs reports, from each publisher's own schedule. The app checks their pages
+        for new dates every Saturday; press the button to check now. A page that can't be read keeps the dates already saved.
+      </p>
+      {status && (
+        <div className="table-wrap">
+          <table className="trades">
+            <thead><tr><th>Schedule</th><th>Dates until</th><th>Last checked</th><th>Result</th></tr></thead>
+            <tbody>
+              {status.series.map((s) => (
+                <tr key={s.key}>
+                  <td><a href={s.source} target="_blank" rel="noopener noreferrer">{s.title}</a></td>
+                  <td className={status.coverage.runningOut.includes(s.title) ? "down" : ""}>{s.until ? day(s.until) : "–"}</td>
+                  <td className="muted">{day(s.checkedAt)}</td>
+                  <td className={s.ok === false ? "down" : s.ok ? "up" : "muted"}>{s.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {error && <p className="warn stop">{error}</p>}
+      <div className="planner-actions">
+        <button type="button" className="primary small" disabled={busy} onClick={() => {
+          setBusy(true);
+          setError(null);
+          api.calendarRefresh().then((s) => { setStatus(s); setChecked(true); })
+            .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "The check didn't run."); })
+            .finally(() => setBusy(false));
+        }}>{busy ? "Checking the official sites… (up to a minute)" : "Check for new dates now"}</button>
+        {checked && !busy && <span className="muted small-text">Done. Results above.</span>}
+      </div>
+      <p className="muted small-text">Some sites (the US Bureau of Labor Statistics especially) may refuse automated checks; if one keeps failing, ask Claude to add its dates by hand.</p>
+    </section>
+  );
+}
+

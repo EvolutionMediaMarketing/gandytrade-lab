@@ -102,17 +102,70 @@ class Event:
         }
 
 
+# Dates found later on the publishers' pages (Settings → Economic calendar, or the worker's weekly check),
+# loaded from the database and merged with the ones above.
+EXTRA: dict[str, set[str]] = {}
+EXTRA_TENTATIVE: set[tuple[str, str]] = set()
+_loaded = 0.0
+RELOAD_SECONDS = 600
+
+
 def all_events() -> list[Event]:
     out = []
-    for key, days in DATES.items():
+    for key in SERIES:
         s = SERIES[key]
-        for d in days:
+        for d in sorted(set(DATES[key]) | EXTRA.get(key, set())):
             local = datetime.combine(date.fromisoformat(d), s.at, tzinfo=s.zone)
-            out.append(Event(s, local.astimezone(timezone.utc), (key, d) in TENTATIVE))
+            out.append(Event(s, local.astimezone(timezone.utc), (key, d) in TENTATIVE or (key, d) in EXTRA_TENTATIVE))
     return sorted(out, key=lambda e: e.when)
 
 
 EVENTS = all_events()
+
+
+def reload(db=None) -> None:
+    """Merge in the dates saved from the publishers' pages."""
+    global EVENTS, _loaded
+    import time as _time
+
+    from sqlalchemy import select
+
+    from ..models import CalendarDate
+
+    own = db is None
+    if own:
+        from ..db import new_session
+
+        db = new_session()
+    try:
+        extra: dict[str, set[str]] = {}
+        tentative: set[tuple[str, str]] = set()
+        for r in db.scalars(select(CalendarDate)):
+            if r.series in SERIES:
+                extra.setdefault(r.series, set()).add(r.day)
+                if r.tentative:
+                    tentative.add((r.series, r.day))
+        EXTRA.clear()
+        EXTRA.update(extra)
+        EXTRA_TENTATIVE.clear()
+        EXTRA_TENTATIVE.update(tentative)
+        EVENTS = all_events()
+    finally:
+        _loaded = _time.time()
+        if own:
+            db.close()
+
+
+def _fresh() -> None:
+    """Reload saved dates every few minutes, so the app and the worker both see new ones."""
+    import time as _time
+
+    if _time.time() - _loaded < RELOAD_SECONDS:
+        return
+    try:
+        reload()
+    except Exception:  # no database yet (tests, start-up): use the built-in dates
+        globals()["_loaded"] = _time.time()
 
 
 def affects(e: Event, symbol: Symbol | None) -> bool:
@@ -120,6 +173,7 @@ def affects(e: Event, symbol: Symbol | None) -> bool:
 
 
 def between(start: datetime, end: datetime, symbol: Symbol | None = None) -> list[Event]:
+    _fresh()
     return [e for e in EVENTS if start <= e.when <= end and affects(e, symbol)]
 
 
@@ -138,6 +192,7 @@ def blocking(symbol: Symbol, now: datetime | None = None, hours: float = 2.0) ->
 
 def coverage(now: datetime | None = None) -> dict:
     """How far ahead the schedule goes, per series, and whether any runs out within a month."""
+    _fresh()
     now = now or datetime.now(timezone.utc)
     last = {k: max(e.when for e in EVENTS if e.series.key == k) for k in SERIES}
     short = [SERIES[k].title for k, t in last.items() if t < now + timedelta(days=WARN_DAYS)]

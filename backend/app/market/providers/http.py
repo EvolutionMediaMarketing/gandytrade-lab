@@ -1,7 +1,8 @@
 """The only way the app talks to the internet: an HTTP client limited to an allowlist.
 
 Market data comes from three read-only services (OANDA's practice prices, Twelve Data and Alpha Vantage);
-Wikipedia supplies read-only background summaries. Any request to another host, or
+Wikipedia supplies read-only background summaries; six official publishers' schedule pages are read (never
+written to) to keep the economic calendar's dates up to date. Any request to another host, or
 over plain HTTP, is refused before it leaves the app. Adding a host here is a
 deliberate, reviewed change; the live trading gateway (Phase 6) will have its
 own separate client, in its own container, on its own server.
@@ -18,6 +19,13 @@ ALLOWED_HOSTS = frozenset({
     "www.alphavantage.co",
     "api.telegram.org",  # alerts to your own Telegram bot (sending messages only)
     "en.wikipedia.org",  # read-only company and market summaries for the chart's hover card
+    # Economic calendar: official schedule pages, read only (app/market/calendar_refresh.py)
+    "www.federalreserve.gov",
+    "www.bankofengland.co.uk",
+    "www.ecb.europa.eu",
+    "www.boj.or.jp",
+    "www.bls.gov",
+    "www.ons.gov.uk",
 })
 
 

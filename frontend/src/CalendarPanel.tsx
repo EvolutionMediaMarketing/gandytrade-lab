@@ -40,7 +40,8 @@ export default function CalendarPanel({ symbol, onAuthError }: { symbol: string;
       </p>
       <label className="check-row"><input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} /> Only events that move this market</label>
       {data.coverage.runningOut.length > 0 && (
-        <p className="warn caution">The schedule for {data.coverage.runningOut.join(", ")} runs out within a month: the next dates need adding.</p>
+        <p className="warn caution">The schedule for {data.coverage.runningOut.join(", ")} runs out within a month. The app checks for new dates
+          every Saturday, or use <a href="#/settings">Settings → Economic calendar dates</a> to check now.</p>
       )}
       {shown.length === 0 ? <p className="muted">Nothing scheduled {onlyThis ? "for this market " : ""}in the next three weeks.</p> : (
         [...days.entries()].map(([day, list]) => (

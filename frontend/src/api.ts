@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade, CalendarResponse,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade, CalendarResponse, CalendarStatus,
 } from "./types";
 
 export class ApiError extends Error {
@@ -147,6 +147,8 @@ export const api = {
   calendar: (q: { symbol?: string; days?: number; past_days?: number }) =>
     request<CalendarResponse>(`/api/calendar?${new URLSearchParams(
       Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
+  calendarStatus: () => request<CalendarStatus>("/api/calendar/status"),
+  calendarRefresh: () => request<CalendarStatus>("/api/calendar/refresh", { method: "POST" }),
   setEventPause: (id: number, on: boolean) =>
     request<AutoRun>(`/api/paper/auto/${id}`, { method: "POST", body: JSON.stringify({ action: "event_pause", on }) }),
   changeAutoRun: (id: number, action: "pause" | "resume" | "stop", closeOpen = false) =>

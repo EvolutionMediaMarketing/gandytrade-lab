@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_session
 from ..deps import current_user
-from ..market import calendar, directory
+from ..market import calendar, calendar_refresh, directory
 from ..models import User
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -33,3 +33,24 @@ def upcoming(symbol: str | None = Query(None, max_length=32), days: int = Query(
         rows.append(d)
     soon = calendar.next_for(sym, now) if sym else None
     return {"events": rows, "soon": soon.to_dict(now) if soon else None, "coverage": calendar.coverage(now)}
+
+
+_last_manual: dict[int, datetime] = {}
+MANUAL_GAP = timedelta(minutes=5)  # be polite to the publishers' sites
+
+
+@router.get("/status")
+def status(db: Session = Depends(get_session), _: User = Depends(current_user)) -> dict:
+    return {"series": calendar_refresh.status(db), "coverage": calendar.coverage()}
+
+
+@router.post("/refresh")
+def refresh(db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    """Check every publisher's schedule page for new dates now (takes up to a minute)."""
+    now = datetime.now(timezone.utc)
+    last = _last_manual.get(user.id)
+    if last and now - last < MANUAL_GAP:
+        raise HTTPException(status_code=429, detail="Checked a moment ago. Try again in a few minutes.")
+    _last_manual[user.id] = now
+    results = calendar_refresh.refresh(db)
+    return {"results": results, "series": calendar_refresh.status(db), "coverage": calendar.coverage()}

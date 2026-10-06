@@ -119,6 +119,18 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None, or
                 continue  # its markets weren't due a check this pass
             paper.update_limits(acct, equity, db)
         db.commit()
+        # Saturdays, while markets are shut: check the official schedule pages for new calendar dates (weekly).
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+
+            from .market import calendar_refresh
+
+            if _dt.now(_tz.utc).weekday() == 5 and calendar_refresh.due(db):
+                got = calendar_refresh.refresh(db)
+                log.info("Calendar check: %s", {k: v["message"] for k, v in got.items()})
+        except Exception:
+            db.rollback()
+            log.exception("Calendar check failed")
         # Sunday evening: a nudge if this week's review isn't done.
         try:
             reviews.remind(db)

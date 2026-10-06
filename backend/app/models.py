@@ -432,3 +432,29 @@ class ReplaySession(Base):
     trades_detail: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
+class CalendarDate(Base):
+    """An economic calendar date found on a publisher's official schedule page, adding to the ones built into the code."""
+
+    __tablename__ = "calendar_dates"
+    __table_args__ = (UniqueConstraint("series", "day", name="uq_calendar_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    series: Mapped[str] = mapped_column(String(12), index=True)  # fed | boe | ecb | boj | us_cpi | us_jobs | uk_cpi
+    day: Mapped[str] = mapped_column(String(10))  # yyyy-mm-dd
+    tentative: Mapped[bool] = mapped_column(default=False)
+    found_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CalendarCheck(Base):
+    """The last time each publisher's schedule was checked, and how it went."""
+
+    __tablename__ = "calendar_checks"
+
+    series: Mapped[str] = mapped_column(String(12), primary_key=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ok: Mapped[bool] = mapped_column(default=False)
+    found: Mapped[int] = mapped_column(Integer, default=0)  # dates read from the page
+    added: Mapped[int] = mapped_column(Integer, default=0)  # of those, new to the app
+    message: Mapped[str] = mapped_column(String(300), default="")
+
