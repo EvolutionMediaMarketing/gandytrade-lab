@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
-import type { CalendarStatus, AlertStatus, BackupStatus, PaperAccount } from "./types";
+import type { CalendarStatus, AlertStatus, NewsWatchStatus, BackupStatus, PaperAccount } from "./types";
 
 interface Rule {
   key: "risk_pct" | "max_open_risk_pct" | "daily_loss_pct" | "max_drawdown_pct";
@@ -233,6 +233,7 @@ function Alerts({ onAuthError }: { onAuthError: (err: unknown) => void }) {
             ))}
           </div>
           <p className="muted small-text">Trades you close yourself don't send alerts. Messages go out within about a minute.</p>
+          {status.kinds.includes("news") && <NewsCoverage news={status.news} />}
         </>
       )}
       {note && <p className="muted">{note}</p>}
@@ -253,6 +254,33 @@ function Alerts({ onAuthError }: { onAuthError: (err: unknown) => void }) {
   );
 }
 
+
+/** News alerts: which of the markets you hold are watched, how, and the day's Alpha Vantage lookups. */
+function NewsCoverage({ news }: { news: NewsWatchStatus }) {
+  return (
+    <div className="news-coverage">
+      <h3>News alerts</h3>
+      <p className="muted small-text">
+        A headline about a market you hold an open paper trade in, from Alpha Vantage's free news feed. It checks each feed
+        about every {news.everyHours} hours, using at most {news.perDay} of the free plan's 25 lookups a day ({news.usedToday} used
+        today). The feed is mostly about US companies, so gold, oil, crops and indices only alert when a headline names them, and
+        some stories will be missed. Information only: news never opens, closes or changes a trade.
+      </p>
+      {!news.keyConfigured && <p className="warn caution small-text">No Alpha Vantage key in app.env, so news can't be checked.</p>}
+      {news.markets.length === 0 ? <p className="muted small-text">No open paper trades right now, so nothing is being watched.</p> : (
+        <ul className="plain small-text">
+          {news.markets.map((m) => (
+            <li key={m.code}>
+              <b>{m.name}</b>: {m.covered ? m.how : <span className="muted">not covered. {m.how}</span>}
+              {m.checkedAt && <span className="muted"> · checked {new Date(m.checkedAt * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</span>}
+              {m.error && <span className="warn"> · {m.error}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Economic calendar: how far ahead each official schedule goes, and a button to check the publishers for new dates. */
 function CalendarDates({ onAuthError }: { onAuthError: (err: unknown) => void }) {

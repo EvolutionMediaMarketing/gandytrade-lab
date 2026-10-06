@@ -749,3 +749,6 @@ ul.plain { margin: 0; padding-left: 18px; }
   .page.builder { grid-template-columns: 1fr; }
   .builder-form .param-grid .wide { grid-column: auto; }
 }
+
+.news-coverage { margin-top: 0.75rem; border-top: 1px solid var(--line); padding-top: 0.5rem; }
+.news-coverage h3 { font-size: 0.95rem; margin: 0 0 0.25rem; }

@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (313 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0021.
+- Tests: `cd backend && python -m pytest -q` (319 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0022.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -92,6 +92,15 @@ has the full plan and `CLAUDE.md` the hard rules.
   so backtests, walk-forward, research, automatic runs, replay and signals all use them. Lengths are `len_` settings
   (tunable by walk-forward); compared numbers are `level_` settings (never scaled). Editing or deleting is blocked
   while a running/paused automatic run uses it ("Save as a new copy" instead). Templates include Cloud + RSI dip.
+- **News alerts** (6 Oct 2026, `backend/app/market/news_watch.py`, migration 0022): opt-in alert kind "news" in
+  Settings → Alerts, which then lists each held market, how it's watched and when it was last checked. The worker checks
+  feeds for markets with open paper trades: US shares/funds by ticker (relevance ≥ 0.5), currencies by `FOREX:<ccy>`
+  (the non-USD side), metals/oil/crops/indices/bonds by an Alpha Vantage topic feed with the market's name required in
+  the headline (`TOPIC_WORDS`). Each feed at most every 3 hours, 2 per pass, 8 lookups a day (counted in `news_lookups`);
+  stories sent once (`news_seen`, by link hash); first look only covers the last 6 hours. Spends nothing unless the
+  kind is on and a chat is linked. UK shares not covered. Note: the in-memory Alpha Vantage budget is per process (app
+  and worker each count their own), so on a busy day the true total can pass 25; Alpha Vantage then just refuses and
+  the app says so.
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.

@@ -139,6 +139,16 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None, or
         except Exception:
             db.rollback()
             log.exception("Calendar check failed")
+        # News alerts: new headlines about markets with open paper trades (information only).
+        try:
+            from .market import news_watch
+
+            got = news_watch.run(db)
+            if got["lookups"]:
+                log.info("News check: %s", got)
+        except Exception:
+            db.rollback()
+            log.exception("News check failed")
         # Sunday evening: a nudge if this week's review isn't done.
         try:
             reviews.remind(db)

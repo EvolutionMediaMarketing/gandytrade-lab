@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .. import alerts, sessions
 from ..db import get_session
 from ..deps import current_user
+from ..market import news_watch
 from ..models import Alert, User
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -24,6 +25,7 @@ def _status(db: Session, user: User) -> dict:
         "chatName": row.chat_name,
         "kinds": row.kinds or [],
         "kindLabels": alerts.KINDS,
+        "news": news_watch.status(db, user.id),
         "recent": [{"at": a.created_at.isoformat(), "kind": a.kind, "text": a.text, "status": a.status, "error": a.error}
                    for a in recent],
     }

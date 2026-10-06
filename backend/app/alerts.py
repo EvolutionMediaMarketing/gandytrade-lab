@@ -30,8 +30,9 @@ KINDS = {
     "problems": "Problems: an automatic run or an account pausing itself, or a backup failing",
     "research": "Research: when the weekly scan finishes, with the size of the shortlist",
     "reviews": "Weekly review: a reminder on Sunday evening if this week's review isn't done",
+    "news": "News: a headline about a market you hold a paper trade in (information only; coverage is thin, see below)",
 }
-DEFAULT_KINDS = ["trades", "problems", "research", "reviews"]
+DEFAULT_KINDS = ["trades", "problems", "research", "reviews"]  # news is opt-in: it spends Alpha Vantage lookups
 MAX_ATTEMPTS = 5
 PER_PASS = 20
 KEEP_DAYS = 30

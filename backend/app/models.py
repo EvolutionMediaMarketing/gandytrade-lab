@@ -472,3 +472,24 @@ class CustomStrategy(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
+
+class NewsLookup(Base):
+    """One Alpha Vantage news lookup by the news alerts (counts against the daily allowance)."""
+
+    __tablename__ = "news_lookups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feed: Mapped[str] = mapped_column(String(60), index=True)  # ticker:AAPL | ticker:FOREX:GBP | topic:financial_markets
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    found: Mapped[int] = mapped_column(Integer, default=0)  # new stories about markets you hold
+    error: Mapped[str] = mapped_column(String(200), default="")
+
+
+class NewsSeen(Base):
+    """A story already alerted (by a hash of its link), so it's only sent once."""
+
+    __tablename__ = "news_seen"
+
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

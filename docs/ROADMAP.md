@@ -118,7 +118,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 | Economic calendar (**done**) | Upcoming interest-rate decisions, jobs and inflation reports, shown on the chart; a warning before placing a trade shortly before a high-impact event | Panel beside the chart, trade panel |
 | Event pause for automatic runs (**done**) | Optional per run: no new entries in a window around high-impact events (open trades keep their stop-losses) | Automatic run settings |
 | Market details and headlines (**done for the chart's hover card**) | Who a company is, its sector, size and a Wikipedia summary; what a currency, commodity, index or bond is and what moves it; recent headlines for US shares and funds (Alpha Vantage, at most 15 lookups a day so UK share prices keep some allowance) | ⓘ by the market name, and beside the market list |
-| News alerts | A Telegram alert when a major story breaks about a market you hold a paper trade in | Settings → Alerts |
+| News alerts (**done**) | A Telegram alert when a story breaks about a market you hold a paper trade in (Alpha Vantage free feed, at most 8 lookups a day; thin for commodities and indices, none for UK shares) | Settings → Alerts |
 
 **Gate:** a deliberately overfitted test strategy is correctly labelled Reject by the robustness checks. **Passed** (`tests/test_walkforward.py`: strategies tuned on pure random-walk prices are rejected; a trend-follower on trending prices is not).
 
@@ -129,7 +129,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 - [x] Walk-forward and Monte Carlo results appear on every backtest (walk-forward on demand, a button on the result)
 - [ ] Alerts arrive by email and, if set up, Telegram
 - [x] Economic calendar shows the coming week's major events
-- [ ] Headlines and news alerts work for markets you hold, and never open, close or change a trade
+- [x] Headlines and news alerts work for markets you hold, and never open, close or change a trade
 
 **News is information, not a trade signal.** Free feeds arrive after prices have already moved, past news can't be
 backtested, and judging a headline would mean an AI making trade decisions. So nothing in this section places, closes or

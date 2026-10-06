@@ -85,7 +85,7 @@ def test_token_never_reaches_the_logs(caplog):
 
 def test_link_chat_test_and_choose(signed_in, telegram):
     s = signed_in.get("/api/alerts").json()
-    assert s["botConfigured"] and not s["chatLinked"] and set(s["kinds"]) == set(alerts.KINDS)
+    assert s["botConfigured"] and not s["chatLinked"] and set(s["kinds"]) == set(alerts.DEFAULT_KINDS)
     chats = signed_in.post("/api/alerts/find-chats").json()["chats"]
     assert chats == [{"chatId": "4242", "name": "Gandy (@gandy)", "type": "private"}]
     assert signed_in.post("/api/alerts/link", json={"chat_id": "999"}).status_code == 400  # never messaged the bot

@@ -620,6 +620,15 @@ export interface AlertStatus {
   kinds: string[];
   kindLabels: Record<string, string>;
   recent: { at: string; kind: string; text: string; status: string; error: string }[];
+  news: NewsWatchStatus;
+}
+
+export interface NewsWatchStatus {
+  perDay: number;
+  usedToday: number;
+  everyHours: number;
+  keyConfigured: boolean;
+  markets: { code: string; name: string; covered: boolean; how: string; checkedAt: number | null; error: string }[];
 }
 
 
