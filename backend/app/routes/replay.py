@@ -79,7 +79,9 @@ def start(body: Start, db: Session = Depends(get_session), _: User = Depends(cur
             raise HTTPException(status_code=400, detail="That replay's candles are no longer in the price history.")
         s = max(s, 30)
     elif body.start == "random":
-        s = random.randint(max(first_ok, 30), max(max(first_ok, 30), last_ok))
+        # Prefer starts with enough earlier history for the chart and its indicators (e.g. a 200 average) to be ready.
+        low = min(max(first_ok, 30, LOOKBACK + WARMUP), max(30, last_ok))
+        s = random.randint(low, max(low, last_ok))
     else:
         try:
             when = datetime.strptime(body.start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
