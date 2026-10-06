@@ -41,7 +41,9 @@ def evaluate(db: Session, code: str, timeframe: str, balance: float = 200.0, ris
     if len(bars) < 60:
         raise ValueError(f"Not enough finished candles for {symbol.name} on {tf.label} yet.")
 
-    key = (symbol.code, tf.code, bars[-1].ts, len(bars), round(balance, 2), round(risk_pct, 2), mode, history.sample)
+    # The strategy list is part of the key: saving, changing or deleting a builder strategy shows up straight away.
+    strategies = tuple(sorted((k, v.version) for k, v in STRATEGIES.items()))
+    key = (symbol.code, tf.code, bars[-1].ts, len(bars), round(balance, 2), round(risk_pct, 2), mode, history.sample, strategies)
     if key in _cache:
         _cache.move_to_end(key)
         return _cache[key]
