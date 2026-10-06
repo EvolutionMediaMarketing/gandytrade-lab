@@ -176,6 +176,44 @@ def cancel(db: Session, user: User, order_id: int) -> PriceOrder:
     return o
 
 
+def modify(db: Session, user: User, order_id: int, *, level: float | None = None, stop: float | None = None,
+           target: float | None = None, clear_target: bool = False, expiry: str | None = None,
+           trail_distance: float | None = None, clear_trail: bool = False) -> PriceOrder:
+    """Change a waiting order. Every change is checked as if it were placed afresh; moving the level to the other
+    side of the price changes its kind (a buy limit becomes a buy stop, and so on)."""
+    o, _ = get_order(db, user, order_id)
+    o = db.get(PriceOrder, o.id, with_for_update=True, populate_existing=True)
+    if o.status != "waiting":
+        raise OrderError(f"This order has already {_done_word(o.status)}, so it can't be changed.")
+    symbol = lookup(db, o.symbol)
+    p = symbol.precision
+    new_level = o.level if level is None else level
+    if level is not None and o.direction == 0:
+        raise OrderError("An “at the open” order fills at the opening price, so it has no level to move.")
+    new_stop = o.stop if stop is None else stop
+    new_target = None if clear_target else (o.target if target is None else target)
+    if (new_level - new_stop) * o.side <= 0:
+        raise OrderError(f"The stop-loss must be {'below' if o.side > 0 else 'above'} the order's price "
+                         f"({new_level:.{p}f}) for a {'buy' if o.side > 0 else 'sell'}.")
+    if new_target is not None and (new_target - new_level) * o.side <= 0:
+        raise OrderError("The target is on the wrong side of the order's price.")
+    new_trail = None if clear_trail else (o.trail_distance if trail_distance is None else trail_distance)
+    new_trail = paper.check_trail(new_trail, new_level)
+    direction = o.direction
+    if level is not None and level != o.level:
+        q = paper.latest_quote(db, symbol)
+        if abs(level - q.mid) <= q.mid * 1e-6:
+            raise OrderError("That's the current price. Choose a level above or below it.")
+        direction = 1 if level > q.mid else -1
+        o.placed_mid = q.mid
+        o.last_checked_ts = max(o.last_checked_ts, q.bars[-1].ts if q.bars else 0)  # judge only candles from now on
+    if expiry is not None:
+        o.expires_at = expiry_time(expiry)
+    o.level, o.direction, o.stop, o.target, o.trail_distance = new_level, direction, new_stop, new_target, new_trail
+    db.commit()
+    return o
+
+
 def _done_word(status: str) -> str:
     return {"filled": "filled", "cancelled": "been cancelled", "expired": "expired", "failed": "failed"}.get(status, "finished")
 

@@ -368,6 +368,12 @@ export default function Workspace({ username, onSignedOut }: { username: string;
             update(tfKnown ? { symbol: t.symbol, timeframe: t.timeframe } : { symbol: t.symbol });
             go("charts");
           }}
+          onShowOrder={(o) => {
+            setShownTrade(null);
+            const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === o.timeframe);
+            update(tfKnown ? { symbol: o.symbol, timeframe: o.timeframe } : { symbol: o.symbol });
+            go("charts");
+          }}
           catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite}
           autoPrefill={autoPrefill} onPrefillUsed={() => setAutoPrefill(null)}
           openAccount={paperOpen} onAccountOpened={() => setPaperOpen(null)} />

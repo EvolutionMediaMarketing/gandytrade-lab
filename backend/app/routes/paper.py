@@ -259,6 +259,26 @@ def new_price_order(body: PriceOrderBody, db: Session = Depends(get_session), us
     return orders.order_dict(o, _precision(db, o.symbol))
 
 
+class PriceOrderChange(BaseModel):
+    level: float | None = Field(None, gt=0)
+    stop: float | None = Field(None, gt=0)
+    target: float | None = Field(None, gt=0)
+    clear_target: bool = False
+    expiry: str | None = Field(None, max_length=8)
+    trail_distance: float | None = Field(None, gt=0)
+    clear_trail: bool = False
+
+
+@router.patch("/price-orders/{order_id}")
+def change_price_order(order_id: int, body: PriceOrderChange, db: Session = Depends(get_session),
+                       user: User = Depends(current_user)) -> dict:
+    try:
+        o = orders.modify(db, user, order_id, **body.model_dump())
+    except (paper.PaperError, ValueError, ProviderError) as exc:
+        raise _fail(exc) from exc
+    return orders.order_dict(o, _precision(db, o.symbol))
+
+
 @router.post("/price-orders/{order_id}/cancel")
 def cancel_price_order(order_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
     try:

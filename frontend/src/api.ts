@@ -97,6 +97,9 @@ export const api = {
       Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
   placePriceOrder: (body: PaperOrder & { level: number; expiry: string; at_open?: boolean }) =>
     request<PriceOrder>("/api/paper/price-orders", { method: "POST", body: JSON.stringify(body) }),
+  changePriceOrder: (id: number, body: { level?: number; stop?: number; target?: number; clear_target?: boolean; expiry?: string;
+    trail_distance?: number; clear_trail?: boolean }) =>
+    request<PriceOrder>(`/api/paper/price-orders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
   setTrailing: (id: number, distance: number | null) =>
     request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/trailing`, { method: "POST", body: JSON.stringify({ distance }) }),

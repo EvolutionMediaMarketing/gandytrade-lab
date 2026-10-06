@@ -198,3 +198,23 @@ def test_at_the_open_gap_past_the_stop_is_not_traded(signed_in, market):
     assert work()["failed"] == 1
     o = signed_in.get(f"/api/paper/price-orders?account_id={cfd}&done=true").json()["finished"][0]
     assert "jumped past your stop-loss" in o["message"]
+
+
+def test_waiting_orders_can_be_changed_and_are_checked(signed_in, market):
+    cfd = accounts(signed_in)["cfd"]["id"]
+    o = place(signed_in, cfd, level=1.2400, stop=1.2350, target=1.2500).json()  # buy limit (below 1.25)
+    url = f"/api/paper/price-orders/{o['id']}"
+    r = signed_in.patch(url, json={"stop": 1.2300, "target": 1.2600, "expiry": "week", "trail_distance": 0.004})
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert (c["stop"], c["target"], c["trailDistance"], c["kind"]) == (1.23, 1.26, 0.004, "Buy limit") and c["expiresAt"]
+    # Moving the level above the price makes it a buy stop.
+    c = signed_in.patch(url, json={"level": 1.2600, "target": 1.2800}).json()
+    assert c["kind"] == "Buy stop" and c["level"] == 1.26
+    assert "below the order's price" in signed_in.patch(url, json={"stop": 1.2700}).json()["detail"]
+    c = signed_in.patch(url, json={"clear_target": True, "clear_trail": True}).json()
+    assert c["target"] is None and c["trailDistance"] is None
+    signed_in.post(f"{url}/cancel")
+    assert "can't be changed" in signed_in.patch(url, json={"stop": 1.2}).json()["detail"]
+    # All accounts at once (no account filter).
+    assert signed_in.get("/api/paper/price-orders").json()["waiting"] == []

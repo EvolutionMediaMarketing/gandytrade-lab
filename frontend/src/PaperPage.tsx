@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
@@ -18,6 +18,8 @@ const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 interface Props {
   onAuthError: (err: unknown) => void;
   onShowTrade: (t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) => void;
+  /** Open the Charts page on a price order's market (its dotted line is drawn there). */
+  onShowOrder: (o: PriceOrder) => void;
   catalogue: Catalogue | null;
   favourites: SymbolInfo[];
   onToggleFavourite: (s: SymbolInfo, on: boolean) => void;
@@ -28,7 +30,7 @@ interface Props {
   onAccountOpened?: () => void;
 }
 
-export default function PaperPage({ onAuthError, onShowTrade, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed,
+export default function PaperPage({ onAuthError, onShowTrade, onShowOrder, catalogue, favourites, onToggleFavourite, autoPrefill, onPrefillUsed,
   openAccount, onAccountOpened }: Props) {
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [selected, setSelected] = useState<number | null>(openAccount ?? null);
@@ -130,6 +132,8 @@ export default function PaperPage({ onAuthError, onShowTrade, catalogue, favouri
 
       <section className="paper-main">
         {error && <p className="warn stop">{error}</p>}
+        <AllWaitingOrders accounts={accounts} onShowOrder={onShowOrder} onAuthError={onAuthError}
+          onFilled={() => { loadDetail(true); loadAccounts(); }} />
         {detail && (
           <>
             <header className="result-head">
@@ -271,18 +275,18 @@ function PriceOrders({ accountId, openCount, onAuthError, onFilled }: {
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") load(); }, REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [load]);
-  if (!orders || (orders.waiting.length === 0 && orders.finished.length === 0)) return null;
+  if (!orders || orders.finished.length === 0) return null;
   const date = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
   return (
     <div className="card">
-      <h3>Price orders <span className="muted small">(placed from the chart's trade planner; the worker checks them every minute)</span></h3>
+      <h3>Price order history <span className="muted small">(this account's filled, cancelled, expired and failed orders; waiting ones are listed at the top of the page)</span></h3>
       {error && <p className="warn stop">{error}</p>}
       <div className="table-wrap">
         <table className="trades">
           <thead><tr><th>Market</th><th>Order</th><th className="num">At</th><th className="num">Stop</th><th className="num">Target</th>
             <th>Status</th><th></th></tr></thead>
           <tbody>
-            {[...orders.waiting, ...orders.finished].map((o) => (
+            {orders.finished.map((o) => (
               <tr key={o.id}>
                 <td>{displayCode(o.symbol)}</td>
                 <td>{o.kind}</td>
@@ -311,6 +315,107 @@ function PriceOrders({ accountId, openCount, onAuthError, onFilled }: {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const EXPIRY_CHOICES: [string, string][] = [
+  ["gtc", "Until cancelled"], ["day", "End of today"], ["week", "End of this week"], ["month", "In 30 days"],
+];
+
+/** Every waiting price order on every account, in one place: click to see it on the chart, edit any value, or cancel. */
+function AllWaitingOrders({ accounts, onShowOrder, onAuthError, onFilled }: {
+  accounts: PaperAccount[]; onShowOrder: (o: PriceOrder) => void; onAuthError: (err: unknown) => void; onFilled: () => void;
+}) {
+  const [orders, setOrders] = useState<PriceOrder[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
+  const onFilledRef = useRef(onFilled);
+  onFilledRef.current = onFilled;
+  const countRef = useRef<number | null>(null);
+  const load = useCallback(() => {
+    api.priceOrders({}).then((r) => {
+      // One filled, expired or failed since last time: refresh the account so a new trade shows.
+      if (countRef.current !== null && r.waiting.length < countRef.current) onFilledRef.current();
+      countRef.current = r.waiting.length;
+      setOrders(r.waiting);
+    }).catch(onAuthError);
+  }, [onAuthError]);
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") load(); }, REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  if (!orders || orders.length === 0) return null;
+  const name = (id: number) => accounts.find((a) => a.id === id)?.name ?? "Paper account";
+  const change = (o: PriceOrder, body: Parameters<typeof api.changePriceOrder>[1]) => {
+    setError(null);
+    api.changePriceOrder(o.id, body)
+      .then(() => { setSaved(o.id); window.setTimeout(() => setSaved((s) => (s === o.id ? null : s)), 2500); load(); })
+      .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "Couldn't save that change."); load(); });
+  };
+  const expires = (iso: string | null) => (iso
+    ? new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+    : "Until cancelled");
+
+  return (
+    <div className="card waiting-all">
+      <h3>Waiting price orders <span className="muted small">(all accounts · click a market to see it on the chart · click a price to change it;
+        changes are saved straight away and checked like a new order)</span></h3>
+      {error && <p className="warn stop">{error}</p>}
+      <div className="table-wrap">
+        <table className="trades">
+          <thead><tr><th>Market</th><th>Account</th><th>Order</th><th>At</th><th>Stop-loss</th><th>Target</th><th>Trailing</th>
+            <th>Expires</th><th></th></tr></thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id} className={saved === o.id ? "just-saved" : ""}>
+                <td><button type="button" className="link-button" title="Show on the chart" onClick={() => onShowOrder(o)}>{displayCode(o.symbol)}</button></td>
+                <td className="muted">{name(o.accountId)}</td>
+                <td>{o.kind}</td>
+                <td>{o.direction === "open"
+                  ? <span className="muted">opening price</span>
+                  : <EditPrice value={o.level} precision={o.precision} label="order price" onSave={(v) => change(o, { level: v })} />}</td>
+                <td><EditPrice value={o.stop} precision={o.precision} label="stop-loss" onSave={(v) => change(o, { stop: v })} /></td>
+                <td>
+                  <EditPrice value={o.target} precision={o.precision} label="target" onSave={(v) => change(o, { target: v })} />
+                  {o.target !== null && <button type="button" className="link-button remove" title="Remove the target"
+                    onClick={() => change(o, { clear_target: true })}>×</button>}
+                </td>
+                <td>
+                  {o.trailDistance === null
+                    ? <EditPrice value={null} precision={o.precision} label="trailing distance (how far behind the price the stop follows)"
+                        onSave={(v) => change(o, { trail_distance: v })} />
+                    : <>
+                        <EditPrice value={o.trailDistance} precision={o.precision} label="trailing distance" onSave={(v) => change(o, { trail_distance: v })} />
+                        <button type="button" className="link-button remove" title="Use a fixed stop instead" onClick={() => change(o, { clear_trail: true })}>×</button>
+                      </>}
+                </td>
+                <td>
+                  <select className="compact" value="" aria-label="Change when it expires" onChange={(e) => { if (e.target.value) change(o, { expiry: e.target.value }); }}>
+                    <option value="">{expires(o.expiresAt)}</option>
+                    {EXPIRY_CHOICES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <button type="button" className="ghost small" onClick={() => {
+                    if (!window.confirm(`Cancel this ${o.kind.toLowerCase()} order on ${displayCode(o.symbol)}?`)) return;
+                    setError(null);
+                    api.cancelPriceOrder(o.id).then(load).catch((err) => {
+                      onAuthError(err);
+                      setError(err instanceof Error ? err.message : "Couldn't cancel it.");
+                      load();
+                    });
+                  }}>Cancel</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small-text">Moving an order's price to the other side of the market changes its kind (a buy limit becomes a buy
+        stop, and so on). Edit the stop-loss and target here; once the order has filled, the trade is managed under Open trades.</p>
     </div>
   );
 }
