@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (280 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0016.
+- Tests: `cd backend && python -m pytest -q` (283 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0017.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -63,6 +63,11 @@ has the full plan and `CLAUDE.md` the hard rules.
   is open; each week unlocks when the previous is complete (quiz 3/4 and task done). Tasks: auto-checked (first manual
   trade, 3 journal lessons, a saved backtest, an automatic run, a completed weekly review), self-ticked, or written
   (week 12: trading plan, 200+ characters, saved). `tests/test_course.py` checks course.ts matches the backend.
+- **Market replay** (6 Oct 2026): Replay page in the top bar. `POST /api/replay/start` returns a stretch of finished
+  candles (random or chosen date; 150 shown before the start, indicators warmed on 250 hidden earlier ones), per-candle
+  £ rates, costs, mode and leverage. The browser reveals one candle at a time (`frontend/src/replayEngine.ts`, same fill
+  rules as the backtester: next open, stop first, costs, 1% sizing; one trade at a time). Score vs holding; sessions
+  saved (`replay_sessions`, migration 0017). Future candles are in the browser's memory: it's practice, not a vault.
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.
@@ -101,8 +106,8 @@ rules and costs (fills, spreads, stops).
 
 1. ~~Rerun the 55/20 basket backtest to read its Monte Carlo card~~ (done 5 Oct, figures above).
 2. Phase 3: ~~monthly top-ups~~ and ~~the 12-week course~~ done; the gate is four weeks of paper trading without errors.
-3. Phase 4: ~~walk-forward check and robustness verdict~~ (done; run it on the 55/20 basket); economic calendar (source to
-   choose); market replay; strategy builder. Later: show each strategy's latest verdict on strategy pages.
+3. Phase 4: ~~walk-forward check and robustness verdict~~ and ~~market replay~~ done; strategy builder; economic calendar
+   (source to choose); news alerts. Later: show each strategy's latest verdict on strategy pages.
 4. Before launch: health monitor, security review.
 
 ## Server incident, 5 October 2026 (not the app)

@@ -4,6 +4,7 @@ import ChartView from "./ChartView";
 import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import JournalPage from "./JournalPage";
+import ReplayPage from "./ReplayPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import DashboardPage from "./DashboardPage";
@@ -76,6 +77,7 @@ function defaults(def: IndicatorDef): Record<string, number> {
 
 const PAGES = [
   { key: "charts", label: "Charts" },
+  { key: "replay", label: "Replay" },
   { key: "backtest", label: "Backtest" },
   { key: "research", label: "Research" },
   { key: "paper", label: "Paper" },
@@ -394,6 +396,10 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "dashboard" && <DashboardPage onAuthError={handleAuth} />}
       {page === "review" && <ReviewPage onAuthError={handleAuth} />}
+      {page === "replay" && (
+        <ReplayPage catalogue={catalogue} favourites={favourites} onToggleFavourite={toggleFavourite} symbol={prefs.symbol}
+          indicators={prefs.indicators} style={prefs.style} onAuthError={handleAuth} />
+      )}
       {page === "journal" && <JournalPage onAuthError={handleAuth} onShowTrade={(t) => showTrade(t)} />}
       {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (

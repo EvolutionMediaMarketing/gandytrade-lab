@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow,
 } from "./types";
 
 export class ApiError extends Error {
@@ -103,6 +103,12 @@ export const api = {
     trail_distance?: number; clear_trail?: boolean }) =>
     request<PriceOrder>(`/api/paper/price-orders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
+  replayStart: (body: { symbol: string; timeframe: string; start: string; candles: number; style: string; indicators: ActiveIndicator[] }) =>
+    request<ReplayData>("/api/replay/start", { method: "POST", body: JSON.stringify(body) }),
+  replaySave: (body: { symbol: string; timeframe: string; start_ts: number; end_ts: number; candles: number; trades: number; wins: number;
+    net_gbp: number; return_pct: number; buy_hold_pct: number; max_drawdown_pct: number; avg_r: number | null; lesson: string }) =>
+    request<ReplaySessionRow>("/api/replay/results", { method: "POST", body: JSON.stringify(body) }),
+  replayResults: () => request<{ sessions: ReplaySessionRow[] }>("/api/replay/results"),
   course: () => request<CourseProgress>("/api/course"),
   courseStart: (week: number) => request<CourseProgress>(`/api/course/${week}/start`, { method: "POST" }),
   courseQuiz: (week: number, score: number) =>

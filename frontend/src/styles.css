@@ -674,3 +674,27 @@ ul.plain { margin: 0; padding-left: 18px; }
 .task textarea { width: 100%; font-family: var(--font); }
 .week-done { padding: 10px 14px; border-radius: var(--radius); background: rgba(52, 211, 153, 0.1); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .facts dd.facts-note { grid-column: 1 / -1; text-align: left; font-family: var(--font); font-size: 12px; margin-top: -4px; }
+
+/* Market replay */
+.page.replay-setup { padding: 16px; max-width: 1100px; margin: 0 auto; width: 100%; display: grid; gap: 14px; align-content: start; }
+.replay-setup h2 { margin: 0 0 4px; }
+.replay-form { display: grid; gap: 12px; max-width: 560px; }
+.replay-form .form-row { display: grid; gap: 6px; }
+.page.replay { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; padding: 12px; min-height: 0; }
+.replay-chart { display: grid; grid-template-rows: auto 1fr; gap: 8px; min-height: 0; }
+.replay-chart .chart-area { min-height: 480px; }
+.replay-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.replay-date { font-family: var(--mono); color: var(--amber); }
+.replay-panel { display: grid; gap: 12px; align-content: start; }
+.replay-panel .small-text { margin: 0; }
+.replay-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.replay-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; background: var(--surface-2); }
+.replay-box h3 { margin: 0; font-size: 14px; display: flex; justify-content: space-between; }
+.replay-trades h3 { margin: 0 0 4px; font-size: 13px; }
+.replay-trades ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; max-height: 220px; overflow-y: auto; }
+.replay-results { display: grid; gap: 10px; }
+.replay-results h2 { margin: 0; }
+@media (max-width: 900px) {
+  .page.replay { grid-template-columns: 1fr; }
+  .replay-chart .chart-area { min-height: 360px; }
+}

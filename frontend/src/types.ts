@@ -740,3 +740,16 @@ export interface CourseWeek {
   task: "auto" | "self" | "plan"; taskDone: boolean; taskDoneAt: string | null; taskDetail: string; note: string;
 }
 export interface CourseProgress { weeks: CourseWeek[]; completed: number; current: number | null; passMark: number; questions: number }
+
+/** Market replay (backend: app/routes/replay.py). */
+export interface ReplayData extends ChartData {
+  startIndex: number;
+  rates: number[];
+  mode: "cash" | "cfd";
+  costs: { spread_pct: number; slippage_pct: number; commission_gbp: number; fx_fee_pct: number; stamp_duty_pct: number; financing_pct_year: number };
+  leverage: number;
+}
+export interface ReplaySessionRow {
+  id: number; symbol: string; timeframe: string; startTs: number; endTs: number; candles: number; trades: number; wins: number;
+  netGbp: number; returnPct: number; buyHoldPct: number; maxDrawdownPct: number; avgR: number | null; lesson: string; createdAt: string;
+}

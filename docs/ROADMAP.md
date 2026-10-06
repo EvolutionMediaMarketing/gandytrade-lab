@@ -109,7 +109,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 
 | Part | What it does | Where it lives |
 | --- | --- | --- |
-| Market replay | Pick a past date, hide the future, and step through bar by bar, placing paper trades as if live; scored at the end | Replay page |
+| Market replay (**done**) | Pick a past date, hide the future, and step through bar by bar, placing paper trades as if live; scored at the end | Replay page |
 | No-code strategy builder | Build rules from blocks, e.g. "when RSI is below 30 and price is above the 200 EMA, buy; stop 2 x ATR below"; saved strategies work everywhere a library strategy does | Builder page |
 | Walk-forward test (**done**) | Tunes settings on one stretch of history and checks them on the next, unseen stretch, repeated across the data (9 stretches: tune on 3, trade the next, 6 times) | Backtest page, both tabs, on demand |
 | Monte Carlo test (**done**) | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
@@ -124,7 +124,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 
 **Done when**
 
-- [ ] Market replay works on any market and timeframe with history
+- [x] Market replay works on any market and timeframe with history
 - [ ] Builder strategies backtest, paper trade and feed the signal assistant like library strategies
 - [x] Walk-forward and Monte Carlo results appear on every backtest (walk-forward on demand, a button on the result)
 - [ ] Alerts arrive by email and, if set up, Telegram

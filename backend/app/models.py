@@ -404,3 +404,27 @@ class CourseProgress(Base):
     quiz_passed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     task_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     note: Mapped[str] = mapped_column(String(4000), default="")  # your answer to a written task (week 12: your plan)
+
+
+class ReplaySession(Base):
+    """A finished market-replay practice session: where and when it was, and how it went."""
+
+    __tablename__ = "replay_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32))
+    timeframe: Mapped[str] = mapped_column(String(8))
+    start_ts: Mapped[int] = mapped_column(BigInteger)  # first candle played
+    end_ts: Mapped[int] = mapped_column(BigInteger)  # last candle played
+    candles: Mapped[int] = mapped_column(Integer)
+    trades: Mapped[int] = mapped_column(Integer)
+    wins: Mapped[int] = mapped_column(Integer)
+    net_gbp: Mapped[float] = mapped_column(Float)
+    return_pct: Mapped[float] = mapped_column(Float)
+    buy_hold_pct: Mapped[float] = mapped_column(Float)
+    max_drawdown_pct: Mapped[float] = mapped_column(Float)
+    avg_r: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lesson: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
