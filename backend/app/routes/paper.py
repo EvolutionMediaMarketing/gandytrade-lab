@@ -11,7 +11,7 @@ from ..market.providers.base import ProviderError
 from ..market.directory import lookup
 from ..models import PaperAccount, PaperEvent, PaperTrade, PriceOrder, User
 from .. import sessions
-from ..paper import auto, orders
+from ..paper import auto, orders, topups
 from ..paper import performance as perf
 from ..paper import service as paper
 from ..models import AutoRun
@@ -68,6 +68,8 @@ def _account_dict(db: Session, acct: PaperAccount, quotes: dict, detail: bool = 
     out = {
         "id": acct.id, "name": acct.name, "mode": acct.mode, "startingBalance": acct.starting_balance,
         "deposits": acct.deposits, "cash": round(acct.cash, 2), "equity": round(state["equity"], 2),
+        "funded": round(funded, 2), "profit": round(state["equity"] - funded, 2),
+        "topupAmount": acct.topup_amount, "topupDay": acct.topup_day, "nextTopup": topups.next_topup(acct),
         "returnPct": round((state["equity"] - funded) / funded * 100, 2) if funded else 0.0,
         "buyingPower": round(state["buying_power"], 2), "used": round(state["used"], 2),
         "riskPct": acct.risk_pct, "dailyLossPct": acct.daily_loss_pct, "maxDrawdownPct": acct.max_drawdown_pct,
@@ -87,6 +89,7 @@ def _account_dict(db: Session, acct: PaperAccount, quotes: dict, detail: bool = 
         closed = db.scalars(select(PaperTrade).where(PaperTrade.account_id == acct.id, PaperTrade.status == "closed")
                             .order_by(PaperTrade.exit_time.desc()).limit(300)).all()
         out["closed"] = [_trade_dict(t, db=db) for t in closed]
+        out["depositHistory"] = [{"amount": d.amount, "kind": d.kind, "at": d.at.isoformat()} for d in topups.history(db, acct)]
     return out
 
 
@@ -122,6 +125,8 @@ class AccountChange(BaseModel):
     max_drawdown_pct: float | None = Field(None, ge=5.0, le=25.0)
     archived: bool | None = None
     resume: bool = False  # lift a drawdown pause after reviewing it
+    topup_amount: float | None = Field(None, ge=0, le=topups.MAX_DEPOSIT)  # monthly top-up, 0 = off
+    topup_day: int | None = Field(None, ge=1, le=topups.MAX_DAY)
 
 
 @router.patch("/accounts/{account_id}")
@@ -143,6 +148,12 @@ def change_account(account_id: int, body: AccountChange, db: Session = Depends(g
         acct.max_drawdown_pct = body.max_drawdown_pct
     if body.archived is not None:
         acct.archived = body.archived
+    if body.topup_amount is not None or body.topup_day is not None:
+        try:
+            topups.set_monthly(db, acct, acct.topup_amount if body.topup_amount is None else body.topup_amount,
+                               acct.topup_day if body.topup_day is None else body.topup_day)
+        except paper.PaperError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if body.resume and acct.halted:
         state = paper.account_state(db, acct)
         acct.halted, acct.halt_reason = False, ""
@@ -167,6 +178,19 @@ def delete_account(account_id: int, body: DeleteAccount, request: Request, db: S
                    f"{name}: {counts['trades']} trade(s), {counts['runs']} automatic run(s)")
     db.commit()
     return {"ok": True, **counts}
+
+
+class Deposit(BaseModel):
+    amount: float = Field(gt=0, le=topups.MAX_DEPOSIT)
+
+
+@router.post("/accounts/{account_id}/deposit")
+def add_money(account_id: int, body: Deposit, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    try:
+        topups.add_now(db, user, account_id, body.amount)
+    except paper.PaperError as exc:
+        raise _fail(exc) from exc
+    return _account_dict(db, paper.get_account(db, user, account_id), {}, detail=True)
 
 
 @router.get("/accounts/{account_id}/performance")

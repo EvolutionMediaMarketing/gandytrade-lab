@@ -61,27 +61,45 @@ def stats(trades: list[PaperTrade]) -> dict:
     }
 
 
-def _curve(acct: PaperAccount, closed: list[PaperTrade], equity_now: float) -> tuple[list[dict], float, float]:
-    """Realised balance after each closed trade, plus today's value. Returns the points and the
-    largest and current fall from a high, in %."""
-    start = acct.starting_balance + (acct.deposits or 0.0)
+def _curve(acct: PaperAccount, closed: list[PaperTrade], equity_now: float,
+           deposits: list | None = None) -> tuple[list[dict], float, float]:
+    """Balance after each closed trade and each deposit, plus today's value. Returns the points and the
+    largest and current fall from a high, in %.
+
+    Falls are measured on growth, not on the balance: a top-up raises the balance without being a gain,
+    so it neither counts as a new high nor hides a fall."""
+    deposits = deposits or []
     created = _aware(acct.created_at) or datetime.now(timezone.utc)
-    points = [{"time": int(created.timestamp()), "value": round(start, 2)}]
-    balance = start
-    for t in closed:
-        balance += t.pnl_gbp or 0.0
-        ts = int(_aware(t.exit_time).timestamp())
+    # Deposits recorded before deposit history existed have no date: count them from the start.
+    undated = (acct.deposits or 0.0) - sum(d.amount for d in deposits)
+    balance = acct.starting_balance + max(0.0, undated)
+    points = [{"time": int(created.timestamp()), "value": round(balance, 2)}]
+    events = [(_aware(t.exit_time), 0, t.pnl_gbp or 0.0) for t in closed] + \
+             [(_aware(d.at), 1, d.amount) for d in deposits]
+    growth, peak_growth, worst = 1.0, 1.0, 0.0
+    for when, is_deposit, amount in sorted(events, key=lambda e: (e[0], e[1])):
+        if is_deposit:
+            balance += amount
+        else:
+            if balance > 0:
+                growth *= max(0.0, (balance + amount) / balance)
+            balance += amount
+            peak_growth = max(peak_growth, growth)
+            worst = max(worst, (peak_growth - growth) / peak_growth * 100 if peak_growth > 0 else 0.0)
+        ts = int(when.timestamp())
         if ts <= points[-1]["time"]:
             ts = points[-1]["time"] + 1  # the chart needs times in order
-        points.append({"time": ts, "value": round(balance, 2)})
+        point = {"time": ts, "value": round(balance, 2)}
+        if is_deposit:
+            point["deposit"] = round(amount, 2)
+        points.append(point)
+    if balance > 0:
+        growth *= max(0.0, equity_now / balance)  # open trades' profit or loss today
+    peak_growth = max(peak_growth, growth)
+    current = (peak_growth - growth) / peak_growth * 100 if peak_growth > 0 else 0.0
+    worst = max(worst, current)
     now = max(int(datetime.now(timezone.utc).timestamp()), points[-1]["time"] + 1)
     points.append({"time": now, "value": round(equity_now, 2)})
-    peak, worst = points[0]["value"], 0.0
-    for p in points:
-        peak = max(peak, p["value"])
-        if peak > 0:
-            worst = max(worst, (peak - p["value"]) / peak * 100)
-    current = (peak - points[-1]["value"]) / peak * 100 if peak > 0 else 0.0
     return points, round(worst, 1), round(max(0.0, current), 1)
 
 
@@ -207,7 +225,9 @@ def performance(db: Session, acct: PaperAccount) -> dict:
     manual = [t for t in closed if t.source == "manual"]
     auto = [t for t in closed if t.source == "auto"]
     s = stats(closed)
-    points, max_dd, current_dd = _curve(acct, closed, state["equity"])
+    from .topups import history
+
+    points, max_dd, current_dd = _curve(acct, closed, state["equity"], history(db, acct))
 
     groups: dict[tuple, list[PaperTrade]] = defaultdict(list)
     for t in closed:

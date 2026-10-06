@@ -373,6 +373,14 @@ export interface PaperAccount {
   mode: "cash" | "cfd";
   startingBalance: number;
   deposits: number;
+  /** Everything paid in (start plus deposits) and the profit on it; deposits are never profit. */
+  funded?: number;
+  profit?: number;
+  /** Monthly top-up (0 = off), the day of the month it's added, and the next date (yyyy-mm-dd). */
+  topupAmount?: number;
+  topupDay?: number;
+  nextTopup?: string | null;
+  depositHistory?: { amount: number; kind: "monthly" | "manual"; at: string }[];
   cash: number;
   equity: number;
   returnPct: number;

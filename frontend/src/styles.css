@@ -627,3 +627,13 @@ ul.plain { margin: 0; padding-left: 18px; }
   .page.journal-page { padding: 12px 16px; }
   .journal-filters select, .journal-filters input[type="search"] { flex: 1 1 100%; max-width: none; }
 }
+
+/* Top-ups */
+.topups { display: grid; gap: 10px; }
+.topups h3 { margin: 0; }
+.topups .small-text, .topups .note { margin: 0; }
+.topup-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.topup-row label { display: grid; gap: 4px; }
+.topup-row input { width: 130px; }
+.topup-next { align-self: center; }
+.deposit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }

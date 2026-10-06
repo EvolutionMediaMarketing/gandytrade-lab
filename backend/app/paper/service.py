@@ -645,5 +645,9 @@ def delete_account(db: Session, user: User, account_id: int, confirm_name: str) 
         db.query(PaperEvent).filter(PaperEvent.trade_id.in_(trade_ids)).delete(synchronize_session=False)
     db.query(PaperTrade).filter(PaperTrade.account_id == acct.id).delete(synchronize_session=False)
     db.query(AutoRun).filter(AutoRun.account_id == acct.id).delete(synchronize_session=False)
+    from ..models import PaperDeposit, PriceOrder
+
+    db.query(PaperDeposit).filter(PaperDeposit.account_id == acct.id).delete(synchronize_session=False)
+    db.query(PriceOrder).filter(PriceOrder.account_id == acct.id).delete(synchronize_session=False)
     db.delete(acct)
     return counts

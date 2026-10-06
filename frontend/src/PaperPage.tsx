@@ -155,10 +155,15 @@ export default function PaperPage({ onAuthError, onShowTrade, onShowOrder, catal
 
             <div className="stats">
               <Stat label="Account value" value={money(detail.equity)} sub={`Cash ${money(detail.cash)}`} />
-              <Stat label="Return" value={pct(detail.returnPct)} tone={detail.returnPct} />
+              <Stat label="Return" value={pct(detail.returnPct)} tone={detail.returnPct}
+                sub={detail.funded !== undefined && detail.profit !== undefined
+                  ? `${detail.profit >= 0 ? "+" : "−"}${money(Math.abs(detail.profit))} on ${money(detail.funded, 0)} paid in` : undefined} />
               <Stat label={detail.mode === "cash" ? "Free to invest" : "Free margin"} value={money(detail.buyingPower)} />
               <Stat label="At risk now" value={money(detail.openRisk)} sub={`Limit ${money(detail.openRiskLimit)} (${detail.maxOpenRiskPct}%)`} />
             </div>
+
+            <TopUps key={`topups-${detail.id}`} account={detail} onAuthError={onAuthError}
+              onChanged={() => { loadDetail(); loadAccounts(); }} />
 
             <div className="card">
               <h3>Open trades <span className="muted small">(click a trade to see it on the chart; prices update every 30 seconds, and the worker closes trades at their stop-loss or target)</span></h3>
@@ -315,6 +320,86 @@ function PriceOrders({ accountId, openCount, onAuthError, onFilled }: {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** Monthly top-up settings, adding money now, and what's been paid in so far. */
+function TopUps({ account, onAuthError, onChanged }: {
+  account: PaperAccount; onAuthError: (err: unknown) => void; onChanged: () => void;
+}) {
+  const [amount, setAmount] = useState(String(account.topupAmount || ""));
+  const [day, setDay] = useState(account.topupDay || 1);
+  const [now, setNow] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const on = (account.topupAmount ?? 0) > 0;
+  const changed = Number(amount || 0) !== (account.topupAmount ?? 0) || day !== (account.topupDay ?? 1);
+  const history = [...(account.depositHistory ?? [])].reverse();
+  const nextDate = account.nextTopup
+    ? new Date(`${account.nextTopup}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "long" })
+    : null;
+
+  function run(p: Promise<unknown>, done: string) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    p.then(() => { setNote(done); onChanged(); })
+      .catch((err) => { onAuthError(err); setError(err instanceof Error ? err.message : "That didn't save."); })
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="card topups">
+      <h3>Top-ups <span className="muted small">(pretend money paid in, as you'd add to a real account; never counted as profit)</span></h3>
+      <div className="topup-row">
+        <label><span className="field-label">Every month, add (£)</span>
+          <input type="number" min={0} step="any" placeholder="0 = off" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+        <label><span className="field-label">On day</span>
+          <select value={day} onChange={(e) => setDay(Number(e.target.value))}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+          </select></label>
+        <button type="button" className={changed ? "primary small" : "ghost small"} disabled={busy || !changed}
+          onClick={() => {
+            const v = Number(amount || 0);
+            if (!Number.isFinite(v) || v < 0) { setError("Enter an amount of £0 or more."); return; }
+            run(api.changePaperAccount(account.id, { topup_amount: v, topup_day: day }),
+              v > 0 ? `Saved: £${v.toLocaleString("en-GB")} on day ${day} of each month.` : "Monthly top-up switched off.");
+          }}>{on && Number(amount || 0) === 0 ? "Switch off" : "Save"}</button>
+        <span className="muted small-text topup-next">
+          {on && nextDate ? <>Next: <b>{money(account.topupAmount ?? 0)}</b> on {nextDate}.</> : "Monthly top-up is off."}
+        </span>
+      </div>
+      <div className="topup-row">
+        <label><span className="field-label">Add money now (£)</span>
+          <input type="number" min={0} step="any" value={now} onChange={(e) => setNow(e.target.value)} /></label>
+        <button type="button" className="ghost small" disabled={busy || !(Number(now) > 0)}
+          onClick={() => {
+            const v = Number(now);
+            if (!window.confirm(`Add ${money(v)} of pretend money to “${account.name}” now?`)) return;
+            run(api.addMoney(account.id, v).then(() => setNow("")), `${money(v)} added.`);
+          }}>Add</button>
+      </div>
+      {note && <p className="note">{note}</p>}
+      {error && <p className="warn stop">{error}</p>}
+      <p className="muted small-text">
+        Paid in so far: {money(account.funded ?? account.startingBalance + account.deposits)} ({money(account.startingBalance, 0)} to start
+        {account.deposits ? ` + ${money(account.deposits)} added` : ""}). New money raises the size of new trades (always {account.riskPct}% of the
+        account), but the drawdown and daily loss limits measure the fall in growth, so a top-up never hides a fall
+        {account.halted ? ", and it doesn't lift this account's pause" : ""}.
+      </p>
+      {history.length > 0 && (
+        <ul className="deposit-list small-text">
+          {(showAll ? history : history.slice(0, 4)).map((d, i) => (
+            <li key={i}><span className="muted">{new Date(d.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+              {" "}{money(d.amount)} <span className="muted">{d.kind === "monthly" ? "monthly top-up" : "added by you"}</span></li>
+          ))}
+          {history.length > 4 && <li><button type="button" className="link-button" onClick={() => setShowAll((s) => !s)}>
+            {showAll ? "Fewer" : `All ${history.length}`}</button></li>}
+        </ul>
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ from .market.directory import lookup
 from .market.providers.base import ProviderError
 from .models import PaperAccount, PaperTrade
 from . import alerts, research, reviews
-from .paper import auto, orders
+from .paper import auto, orders, topups
 from .paper import service as paper
 
 log = logging.getLogger("gandytrade.worker")
@@ -78,6 +78,13 @@ def run_once(last_checked: dict[str, float], last_looked: dict | None = None, or
                     log.info("Closed paper trade %s on %s: %s", t.id, code, t.exit_reason)
                 touched_accounts.add(acct.id)
             db.commit()
+        # Monthly top-ups that are due (before anything else sizes a trade on the balance).
+        try:
+            topups.run_due(db)
+        except Exception:
+            db.rollback()
+            log.exception("Top-up pass failed")
+            stats["errors"] += 1
         # Price orders: fill any whose level was reached (after stops, so a freed-up risk allowance counts).
         try:
             got = orders.work(db, _order_looked if order_looked is None else order_looked, CHECK_EVERY)

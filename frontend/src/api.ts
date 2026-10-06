@@ -83,9 +83,11 @@ export const api = {
     request<PaperAccount>("/api/paper/accounts", { method: "POST", body: JSON.stringify(body) }),
   changePaperAccount: (id: number, body: {
     name?: string; risk_pct?: number; max_open_risk_pct?: number; daily_loss_pct?: number; max_drawdown_pct?: number;
-    archived?: boolean; resume?: boolean;
+    archived?: boolean; resume?: boolean; topup_amount?: number; topup_day?: number;
   }) =>
     request<PaperAccount>(`/api/paper/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  addMoney: (id: number, amount: number) =>
+    request<PaperAccount>(`/api/paper/accounts/${id}/deposit`, { method: "POST", body: JSON.stringify({ amount }) }),
   deletePaperAccount: (id: number, confirmName: string) =>
     request<{ ok: boolean; trades: number; runs: number }>(`/api/paper/accounts/${id}/delete`, {
       method: "POST", body: JSON.stringify({ confirm_name: confirmName }),

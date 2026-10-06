@@ -168,6 +168,23 @@ class PaperAccount(Base):
     halt_reason: Mapped[str] = mapped_column(String(255), default="")
     archived: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Monthly top-up: pretend money added on a set day each month (0 = off), as you'd pay into a real account.
+    topup_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    topup_day: Mapped[int] = mapped_column(Integer, default=1)  # day of the month, 1 to 28
+    topup_last_month: Mapped[str] = mapped_column(String(7), default="")  # "2026-10": the month last topped up
+
+
+class PaperDeposit(Base):
+    """Money added to a paper account after it started: a monthly top-up or one you added yourself.
+    Deposits are never counted as profit, and falls are measured on growth, not on money paid in."""
+
+    __tablename__ = "paper_deposits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    kind: Mapped[str] = mapped_column(String(10))  # monthly | manual
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class PaperTrade(Base):
