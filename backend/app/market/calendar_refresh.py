@@ -11,6 +11,7 @@ Runs weekly in the worker, and on demand from Settings → Economic calendar.
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
@@ -25,6 +26,18 @@ from .providers.http import safe_client
 log = logging.getLogger(__name__)
 USER_AGENT = "Mozilla/5.0 (compatible; GandyTradeLab/1.0; +https://gandytrade.co.uk) economic-calendar-check"
 EVERY = timedelta(days=7)
+SAME_SITE_GAP = 6.0  # seconds between requests to one site (the BLS blocks quick repeat requests)
+BLOCK_SIGNS = ("access denied", "request rejected", "access to this page has been denied", "are you a robot", "captcha")
+_last_hit: dict[str, float] = {}
+
+
+def _pause_for(url: str) -> None:
+    """Space out requests to the same site."""
+    host = httpx.URL(url).host
+    wait = SAME_SITE_GAP - (time.monotonic() - _last_hit.get(host, -1e9))
+    if wait > 0:
+        time.sleep(wait)
+    _last_hit[host] = time.monotonic()
 MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 _MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
 
@@ -147,20 +160,30 @@ READERS: dict[str, tuple[str, Callable[[str], list[date]], int]] = {
 
 
 def sane(days: list[date], today: date) -> list[date]:
-    """Weekdays only, from a year ago to two years ahead, no repeats, in order."""
+    """Weekdays only, from a year ago to two years ahead, no repeats, in order. (Pages list past dates too; those
+    help show the page was read properly, but only coming dates are kept: the built-in list covers the past.)"""
     keep = {d for d in days if d.weekday() < 5 and today - timedelta(days=400) <= d <= today + timedelta(days=760)}
     return sorted(keep)
 
 
 # --- Fetching and saving ------------------------------------------------------------------------------
 
-def _get(client: httpx.Client, url: str) -> str:
-    r = client.get(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
-    if r.status_code in (403, 429):
-        raise ReadError(f"The site refused the request (HTTP {r.status_code}); it may block automated checks.")
-    if r.status_code != 200:
-        raise ReadError(f"The page answered HTTP {r.status_code}.")
-    return r.text
+def _blocked(body: str) -> bool:
+    low = body[:20000].lower()
+    return any(s in low for s in BLOCK_SIGNS)
+
+
+def _get(client: httpx.Client, url: str, retries: int = 1) -> str:
+    for attempt in range(retries + 1):
+        _pause_for(url)
+        r = client.get(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
+        if r.status_code == 200 and not _blocked(r.text):
+            return r.text
+        if attempt < retries:
+            time.sleep(SAME_SITE_GAP * 2)  # one patient retry
+    if r.status_code in (403, 429) or (r.status_code == 200 and _blocked(r.text)):
+        raise ReadError("The site sent back a 'blocked' page instead of the schedule: it limits automated checks.")
+    raise ReadError(f"The page answered HTTP {r.status_code}.")
 
 
 def _ons_days(client: httpx.Client, today: date) -> list[date]:
@@ -169,8 +192,9 @@ def _ons_days(client: httpx.Client, today: date) -> list[date]:
     y, m = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
     for _ in range(14):
         url = f"https://www.ons.gov.uk/releases/consumerpriceinflationuk{MONTHS[m - 1]}{y}"
+        _pause_for(url)
         r = client.get(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
-        if r.status_code == 200:
+        if r.status_code == 200 and not _blocked(r.text):
             out += read_ons(page_text(r.text))
             misses = 0
         elif r.status_code in (403, 429):
@@ -183,14 +207,19 @@ def _ons_days(client: httpx.Client, today: date) -> list[date]:
     return out
 
 
-def _save(db: Session, series: str, days: list[date], tentative_from: date | None = None) -> int:
+def _save(db: Session, series: str, days: list[date], today: date, tentative_from: date | None = None) -> list[str]:
+    """Save the coming dates not already known; returns the ones added. Past dates found earlier are tidied away."""
+    for old in db.scalars(select(CalendarDate).where(CalendarDate.series == series, CalendarDate.day < today.isoformat())):
+        db.delete(old)
     have = {r.day for r in db.scalars(select(CalendarDate).where(CalendarDate.series == series))} | set(calendar.DATES[series])
-    added = 0
+    added = []
     for d in days:
+        if d < today:
+            continue
         key = d.isoformat()
         if key not in have:
             db.add(CalendarDate(series=series, day=key, tentative=bool(tentative_from and d >= tentative_from)))
-            added += 1
+            added.append(key)
     return added
 
 
@@ -219,9 +248,9 @@ def refresh(db: Session, client: httpx.Client | None = None, today: date | None 
                     raise ReadError(f"Found {len(days)} date(s), fewer than expected: the page layout may have changed.")
                 # The Fed confirms each date only at the meeting before, so dates beyond the next year are tentative.
                 tentative_from = date(today.year + 1, 1, 1) if series == "fed" else None
-                added = _save(db, series, days, tentative_from)
-                msg = f"Found {len(days)} dates; {added} new." if added else f"Found {len(days)} dates; nothing new."
-                results[series] = {"ok": True, "found": len(days), "added": added, "message": msg}
+                new = _save(db, series, days, today, tentative_from)
+                msg = (f"Found {len(days)} dates; {len(new)} new: " + ", ".join(new)) if new else f"Found {len(days)} dates; nothing new."
+                results[series] = {"ok": True, "found": len(days), "added": len(new), "message": msg}
             except (ReadError, httpx.HTTPError, ValueError) as exc:
                 text = str(exc) if isinstance(exc, ReadError) else f"Couldn't reach the page ({type(exc).__name__})."
                 results[series] = {"ok": False, "found": 0, "added": 0, "message": text + " Kept the dates already saved."}
@@ -254,8 +283,9 @@ def status(db: Session) -> list[dict]:
     out = []
     for key, s in calendar.SERIES.items():
         c = checks.get(key)
+        found = sorted(r.day for r in db.scalars(select(CalendarDate).where(CalendarDate.series == key)))
         out.append({
-            "key": key, "title": s.title, "until": cover.get(key), "source": calendar.SOURCES[key],
+            "key": key, "title": s.title, "until": cover.get(key), "source": calendar.SOURCES[key], "fromPages": found,
             "checkedAt": (c.checked_at if c.checked_at.tzinfo else c.checked_at.replace(tzinfo=timezone.utc)).isoformat() if c else None,
             "ok": c.ok if c else None, "message": c.message if c else "Not checked yet.",
         })

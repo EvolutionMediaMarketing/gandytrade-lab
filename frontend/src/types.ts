@@ -777,5 +777,7 @@ export interface CalendarResponse {
 
 export interface CalendarSeriesStatus {
   key: string; title: string; until: string | null; source: string; checkedAt: string | null; ok: boolean | null; message: string;
+  /** Coming dates added from the publisher's page (on top of the built-in ones). */
+  fromPages: string[];
 }
 export interface CalendarStatus { series: CalendarSeriesStatus[]; coverage: CalendarResponse["coverage"] }

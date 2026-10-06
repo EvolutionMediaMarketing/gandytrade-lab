@@ -279,7 +279,14 @@ function CalendarDates({ onAuthError }: { onAuthError: (err: unknown) => void })
                   <td><a href={s.source} target="_blank" rel="noopener noreferrer">{s.title}</a></td>
                   <td className={status.coverage.runningOut.includes(s.title) ? "down" : ""}>{s.until ? day(s.until) : "–"}</td>
                   <td className="muted">{day(s.checkedAt)}</td>
-                  <td className={s.ok === false ? "down" : s.ok ? "up" : "muted"}>{s.message}</td>
+                  <td>
+                    <span className={s.ok === false ? "down" : s.ok ? "up" : "muted"}>{s.message}</span>
+                    {s.fromPages.length > 0 && (
+                      <span className="muted small-text calendar-added">
+                        <br />Added from the page: {s.fromPages.map((d) => day(`${d}T12:00:00Z`)).join(" · ")}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

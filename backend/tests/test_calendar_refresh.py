@@ -26,8 +26,9 @@ ONS = "<p>Release date: 21 October 2026 7:00am</p>"
 
 
 @pytest.fixture(autouse=True)
-def built_in_dates_afterwards():
-    """Dates found in one test mustn't leak into others (the calendar keeps them in memory)."""
+def built_in_dates_afterwards(monkeypatch):
+    """Dates found in one test mustn't leak into others (the calendar keeps them in memory). No real waiting."""
+    monkeypatch.setattr(cr.time, "sleep", lambda s: None)
     yield
     calendar.EXTRA.clear()
     calendar.EXTRA_TENTATIVE.clear()
@@ -85,9 +86,10 @@ def test_refresh_adds_new_dates_and_keeps_the_rest_when_a_page_fails(client, mon
     db = new_session()
     before = len(calendar.EVENTS)
     got = cr.refresh(db, fake_client(pages), today=TODAY)
-    assert got["boj"]["ok"] is False and "refused" in got["boj"]["message"] and "Kept" in got["boj"]["message"]
+    assert got["boj"]["ok"] is False and "blocked" in got["boj"]["message"] and "Kept" in got["boj"]["message"]
     assert got["us_cpi"]["ok"] is False and "fewer than expected" in got["us_cpi"]["message"]
-    assert got["fed"]["ok"] and got["fed"]["added"] == 2  # 1 May 2027 (the test page's cross-month meeting) and 2028
+    # The test page's cross-month "30-1" lands on Saturday 1 May 2027, so the sanity check rightly drops it.
+    assert got["fed"]["ok"] and got["fed"]["message"].endswith("2 new: 2028-01-26, 2028-06-09")
     assert got["us_jobs"]["ok"] and got["us_jobs"]["added"] == 2  # the test page's two dates aren't jobs-report days
     assert got["boe"]["ok"] and got["boe"]["added"] == 0  # all already known
     # UK CPI pages are tried month by month from last month; two missing in a row ends the search.
@@ -109,3 +111,18 @@ def test_refresh_endpoint_is_rate_limited(signed_in, monkeypatch):
     assert signed_in.post("/api/calendar/refresh").status_code == 429
     s = signed_in.get("/api/calendar/status").json()
     assert {x["key"] for x in s["series"]} == set(calendar.SERIES)
+
+
+def test_a_block_page_is_reported_and_past_dates_are_not_kept(client, monkeypatch):
+    from app.db import new_session
+
+    pages = {calendar.SOURCES["us_cpi"]: (200, "<html><title>Access Denied</title>You don't have permission</html>"),
+             calendar.SOURCES["us_jobs"]: (200, BLS.replace("2026", "2025") + BLS)}
+    monkeypatch.setattr(cr, "READERS", {k: v for k, v in cr.READERS.items() if k in ("us_cpi", "us_jobs")}
+                        | {"us_jobs": (calendar.SOURCES["us_jobs"], cr.read_bls, 2)})
+    monkeypatch.setattr(calendar, "SERIES", {k: calendar.SERIES[k] for k in ("us_cpi", "us_jobs")})
+    db = new_session()
+    got = cr.refresh(db, fake_client(pages), today=TODAY)
+    assert got["us_cpi"]["ok"] is False and "blocked" in got["us_cpi"]["message"]
+    assert got["us_jobs"]["ok"] and got["us_jobs"]["message"].endswith("2026-10-14, 2026-11-10")  # 2025 copies not kept
+    db.close()
