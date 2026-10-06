@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (286 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0018.
+- Tests: `cd backend && python -m pytest -q` (300 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0019.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -73,6 +73,13 @@ has the full plan and `CLAUDE.md` the hard rules.
   marks them (purple "News") plus "big moves" (≥ 3 × the average move of the previous 20 candles, and ≥ 0.5%), with
   hover notes and a link to Wikipedia's Current events page for that day (a link only; nothing fetched). Saved replays
   keep their trades (migration 0018), open again with 100 candles after, can be deleted, and saving twice updates.
+- **Economic calendar** (6 Oct 2026, `backend/app/market/calendar.py`, migration 0019): rate decisions (Fed, BoE, ECB,
+  BoJ), US CPI, US jobs and UK CPI, copied from each publisher's official schedule (links in `SOURCES`, checked
+  6 Oct 2026) and kept in code, so no new outside web access. Times converted to UTC per country's clocks. Charts page:
+  Calendar panel (next 3 weeks, this market's events highlighted), purple markers with hover notes on past events, a
+  banner and a trade-planner warning when one is due within 24 hours. Automatic runs: optional "event pause" (no new
+  entries 2 hours either side; open trades keep their stops). **Upkeep:** add new dates when the panel warns the
+  schedule runs out (US jobs and UK CPI end Dec 2026; US CPI Jan 2027; central banks end 2027).
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.
@@ -111,8 +118,7 @@ rules and costs (fills, spreads, stops).
 
 1. ~~Rerun the 55/20 basket backtest to read its Monte Carlo card~~ (done 5 Oct, figures above).
 2. Phase 3: ~~monthly top-ups~~ and ~~the 12-week course~~ done; the gate is four weeks of paper trading without errors.
-3. Phase 4: ~~walk-forward check and robustness verdict~~ and ~~market replay~~ done; strategy builder; economic calendar
-   (source to choose); news alerts. Later: show each strategy's latest verdict on strategy pages.
+3. Phase 4: ~~walk-forward check~~, ~~market replay~~ and ~~economic calendar~~ done; strategy builder; news alerts. Later: show each strategy's latest verdict on strategy pages.
 4. Before launch: health monitor, security review.
 
 ## Server incident, 5 October 2026 (not the app)

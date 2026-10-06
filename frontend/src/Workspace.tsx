@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Time } from "lightweight-charts";
 import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
 import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
 import JournalPage from "./JournalPage";
+import CalendarPanel, { inWords } from "./CalendarPanel";
 import ReplayPage from "./ReplayPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
@@ -11,14 +13,14 @@ import DashboardPage from "./DashboardPage";
 import BasketPanel from "./BasketPanel";
 import ReviewPage from "./ReviewPage";
 import ResearchPage from "./ResearchPage";
-import type { ShownTrade } from "./ChartView";
+import type { ChartMarker, ChartNote, ShownTrade } from "./ChartView";
 import type { TradePlan } from "./PlanZones";
 import SettingsPage from "./SettingsPage";
 import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit, PriceOrder, PaperTrade } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit, PriceOrder, PaperTrade, CalendarResponse } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -127,7 +129,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [panel, setPanel] = useState<"" | "indicators" | "signals" | "plan">("");
+  const [panel, setPanel] = useState<"" | "indicators" | "signals" | "plan" | "calendar">("");
   const [plan, setPlan] = useState<TradePlan | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const inFlight = useRef(false);
@@ -268,6 +270,33 @@ export default function Workspace({ username, onSignedOut }: { username: string;
   useEffect(() => {
     setPlan(null);
   }, [prefs.symbol]);
+
+  // Economic calendar: past events affecting this market marked on the chart (hover for what it was), and a dot
+  // on the Calendar button plus a banner when one is due within 24 hours.
+  const [calendarEvents, setCalendarEvents] = useState<CalendarResponse | null>(null);
+  useEffect(() => {
+    if (page !== "charts") return;
+    api.calendar({ symbol: prefs.symbol, days: 2, past_days: 365 }).then(setCalendarEvents).catch(() => setCalendarEvents(null));
+  }, [page, prefs.symbol]);
+  const calendarSoon = calendarEvents?.soon ?? null;
+  const calendarMarks = useMemo(() => {
+    const bars = data && data.symbol.code === prefs.symbol ? data.bars : [];
+    const markers: ChartMarker[] = [];
+    const notes: ChartNote[] = [];
+    if (!bars.length || !calendarEvents) return { markers, notes };
+    for (const e of calendarEvents.events) {
+      if (!e.affects || e.inSeconds > 0 || e.time < bars[0].time) continue;
+      let at = -1;
+      for (let k = bars.length - 1; k >= 0; k--) { if (bars[k].time <= e.time) { at = k; break; } }
+      if (at < 0) continue;
+      const t = bars[at].time;
+      markers.push({ time: t as Time, position: "belowBar", shape: "square", color: "#c084fc", text: "" });
+      notes.push({ time: t, kind: "news", title: e.title,
+        text: `${new Date(e.time * 1000).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} UK. ${e.what}` });
+    }
+    markers.sort((a, b) => (a.time as number) - (b.time as number));
+    return { markers, notes };
+  }, [calendarEvents, data, prefs.symbol]);
 
   // Paper price orders waiting on this market, drawn on the chart; refreshed every minute (the worker's pace).
   const [priceOrders, setPriceOrders] = useState<PriceOrder[]>([]);
@@ -449,6 +478,10 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           aria-expanded={panel === "signals"} title="What each strategy's rules say about this chart">
           Signals
         </button>
+        <button className={panel === "calendar" ? "secondary on" : "secondary"} onClick={() => setPanel((p) => (p === "calendar" ? "" : "calendar"))}
+          aria-expanded={panel === "calendar"} title="Coming interest rate decisions, inflation and jobs reports">
+          Calendar{calendarSoon ? " ●" : ""}
+        </button>
         <button className="ghost" onClick={() => load()} disabled={loading} title="Fetch the latest prices now">
           {loading ? "Loading…" : "Refresh"}
         </button>
@@ -498,12 +531,21 @@ export default function Workspace({ username, onSignedOut }: { username: string;
         </div>
       )}
 
+      {page === "charts" && calendarSoon && (
+        <div className="banner event-soon" role="status">
+          <b>{calendarSoon.title}</b> {inWords(calendarSoon.inSeconds)}
+          {" "}({new Date(calendarSoon.time * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} UK{calendarSoon.approx ? ", roughly" : ""}).
+          {" "}Prices can jump and spreads widen around it.{" "}
+          <button type="button" className="link-button" onClick={() => setPanel("calendar")}>Calendar</button>
+        </div>
+      )}
       <div className={panel ? `body with-panel ${panel}` : "body"}>
         <section className="chart-area" aria-busy={loading}>
           {data && data.bars.length > 0 ? (
             <ChartView data={data} live={livePrice} plan={panel === "plan" && data.symbol.code === prefs.symbol ? plan : null} onPlanChange={changePlan}
               trade={shownTrade && data.symbol.code === shownTrade.symbol ? shownTrade : null}
-              orders={data.symbol.code === prefs.symbol ? priceOrders : []} />
+              orders={data.symbol.code === prefs.symbol ? priceOrders : []}
+              markers={calendarMarks.markers} notes={calendarMarks.notes} />
           ) : !error && <div className="splash">Loading chart…</div>}
         </section>
 
@@ -511,8 +553,13 @@ export default function Workspace({ username, onSignedOut }: { username: string;
           <aside className="panel" aria-label="Trade planner">
             <TradePlanner symbol={data.symbol} timeframe={prefs.timeframe} plan={plan} onPlanChange={changePlan} onStartFresh={startPlan}
               linked={linked} onLinkedChange={setLinked}
-              onAuthError={handleAuth} onPlaced={loadOrders} lastPrice={livePrice?.mid ?? lastClose}
+              onAuthError={handleAuth} onPlaced={loadOrders} lastPrice={livePrice?.mid ?? lastClose} eventSoon={calendarSoon}
               orders={priceOrders} onOrdersChanged={loadOrders} />
+          </aside>
+        )}
+        {panel === "calendar" && (
+          <aside className="panel" aria-label="Economic calendar">
+            <CalendarPanel symbol={prefs.symbol} onAuthError={handleAuth} />
           </aside>
         )}
         {panel === "signals" && (

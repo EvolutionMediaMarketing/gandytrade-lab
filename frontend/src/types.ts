@@ -473,6 +473,8 @@ export interface LivePrice {
 }
 
 export interface AutoRun {
+  /** No new entries from 2 hours before to 2 hours after a high-impact event for this market. */
+  eventPause?: boolean;
   id: number;
   accountId: number;
   symbol: string;
@@ -760,4 +762,15 @@ export interface ReplaySessionRow {
 export interface ReplayTrade {
   side: 1 | -1; entryTime: number; exitTime: number; entryPrice: number; exitPrice: number; stop: number;
   pnl: number; r: number | null; reason: string;
+}
+
+/** Economic calendar (backend: app/market/calendar.py). */
+export interface CalendarEvent {
+  key: string; title: string; country: string; what: string; time: number; approx: boolean; tentative: boolean;
+  inSeconds: number; source: string; affects: boolean;
+}
+export interface CalendarResponse {
+  events: CalendarEvent[];
+  soon: CalendarEvent | null;
+  coverage: { checked: string; until: Record<string, string>; runningOut: string[] };
 }

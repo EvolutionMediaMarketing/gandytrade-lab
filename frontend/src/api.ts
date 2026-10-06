@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade, CourseProgress, ReplayData, ReplaySessionRow, ReplayTrade, CalendarResponse,
 } from "./types";
 
 export class ApiError extends Error {
@@ -144,6 +144,11 @@ export const api = {
   startBasketRuns: (body: { account_id: number | null; new_account_name?: string; new_account_risk_pct?: number; markets: string[]; timeframe: string; strategy: string; direction: string;
     params: Record<string, number>; stop_run_ids: number[] }) =>
     request<{ runs: AutoRun[] }>("/api/paper/auto/basket", { method: "POST", body: JSON.stringify(body) }),
+  calendar: (q: { symbol?: string; days?: number; past_days?: number }) =>
+    request<CalendarResponse>(`/api/calendar?${new URLSearchParams(
+      Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
+  setEventPause: (id: number, on: boolean) =>
+    request<AutoRun>(`/api/paper/auto/${id}`, { method: "POST", body: JSON.stringify({ action: "event_pause", on }) }),
   changeAutoRun: (id: number, action: "pause" | "resume" | "stop", closeOpen = false) =>
     request<AutoRun>(`/api/paper/auto/${id}`, { method: "POST", body: JSON.stringify({ action, close_open: closeOpen }) }),
   researchOptions: () => request<ResearchOptions>("/api/research/options"),

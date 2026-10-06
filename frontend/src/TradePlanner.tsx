@@ -3,7 +3,8 @@ import { api, ApiError } from "./api";
 import { money } from "./BacktestPage";
 import { displayCode } from "./MarketPicker";
 import type { TradePlan } from "./PlanZones";
-import type { OddsRow, PaperAccount, PositionSize, PriceOrder, SymbolInfo, TargetOdds } from "./types";
+import type { CalendarEvent, OddsRow, PaperAccount, PositionSize, PriceOrder, SymbolInfo, TargetOdds } from "./types";
+import { inWords } from "./CalendarPanel";
 
 const SETTINGS_KEY = "gt.plan.v1";
 type Mode = "" | "cash" | "cfd";
@@ -31,6 +32,8 @@ interface Props {
   /** Paper price orders waiting on this market. */
   orders?: PriceOrder[];
   onOrdersChanged?: () => void;
+  /** A high-impact event for this market within 24 hours, if any. */
+  eventSoon?: CalendarEvent | null;
   /** Stop-loss and target move with the entry line. */
   linked?: boolean;
   onLinkedChange?: (on: boolean) => void;
@@ -38,7 +41,7 @@ interface Props {
 
 /** Plan a trade on the chart: drag the lines, see the size, the risk and the reward in pounds. */
 export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlanChange, onStartFresh, onAuthError, lastPrice = null,
-  orders = [], onOrdersChanged, linked = true, onLinkedChange }: Props) {
+  orders = [], onOrdersChanged, linked = true, onLinkedChange, eventSoon = null }: Props) {
   // The typical daily move (ATR), to describe stop distances in a way that means something.
   const [dailyAtr, setDailyAtr] = useState<number | null>(null);
   useEffect(() => {
@@ -174,6 +177,12 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
           : <button type="button" className="ghost small" onClick={() => onPlanChange({ ...plan, target: null })}>Remove target</button>}
       </div>
 
+      {eventSoon && (
+        <p className="warn caution">
+          <b>{eventSoon.title}</b> {inWords(eventSoon.inSeconds)}. Around big announcements prices can jump past a stop-loss and spreads widen,
+          so a trade can lose more than planned. Many traders wait until it's out.
+        </p>
+      )}
       {planProblem && <p className="warn stop">{planProblem}</p>}
       {cashShort && <p className="warn caution">With real shares you can only buy, so the stop-loss must be below the entry. Switch to CFD / spread bet to plan a short.</p>}
       {error && !cashShort && <p className="warn stop">{error}</p>}

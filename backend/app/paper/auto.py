@@ -266,6 +266,14 @@ def open_trade_of(db: Session, run: AutoRun, lock: bool = False) -> PaperTrade |
     return db.scalar(q.with_for_update() if lock else q)
 
 
+def set_event_pause(db: Session, user: User, run_id: int, on: bool) -> AutoRun:
+    """Switch the event pause on or off: no new entries 2 hours either side of a high-impact event for this market."""
+    run = get_run(db, user, run_id)
+    run.event_pause = bool(on)
+    db.commit()
+    return run
+
+
 def change(db: Session, user: User, run_id: int, action: str, close_open: bool = False) -> AutoRun:
     """Pause, resume or stop a run. Pausing or stopping leaves any open trade with its stop-loss in place,
     unless you ask for it to be closed too."""
@@ -359,7 +367,20 @@ def step(db: Session, run: AutoRun) -> str:
         paper.update_limits(acct, paper.account_state(db, acct)["equity"], db)
         done.append(f"closed the {'buy' if t.side > 0 else 'short'} (exit rule: {d.exit_label}){late}")
         t = None
-    if t is None and d.entry:
+    if t is None and d.entry and run.event_pause:
+        from ..market import calendar
+
+        near = calendar.blocking(symbol)
+        if near is not None:
+            word = "buy" if d.entry[0] > 0 else "short"
+            done.append(f"a {word} was due but the event pause held it back: {near.series.title} at "
+                        f"{near.when.astimezone(paper.UK):%H:%M} UK time")
+            skip_entry = True
+        else:
+            skip_entry = False
+    else:
+        skip_entry = False
+    if t is None and d.entry and not skip_entry:
         side, stop, target = d.entry
         word = "buy" if side > 0 else "short"
         if target is not None and (target - q.mid) * side <= 0:

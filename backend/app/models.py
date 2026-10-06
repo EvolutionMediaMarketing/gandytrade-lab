@@ -308,6 +308,8 @@ class AutoRun(Base):
     last_message: Mapped[str] = mapped_column(String(255), default="")
     errors: Mapped[int] = mapped_column(Integer, default=0)  # problems in a row; the run pauses itself after a few
     backtest: Mapped[dict] = mapped_column(JSON, default=dict)  # what the backtest showed when the run started
+    # Event pause: no new entries from 2 hours before to 2 hours after a high-impact event for this market.
+    event_pause: Mapped[bool] = mapped_column(default=False)
 
 
 class ResearchJob(Base):

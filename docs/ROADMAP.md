@@ -115,8 +115,8 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 | Monte Carlo test (**done**) | Reshuffles the order of past trades thousands of times to show the range of drawdowns and outcomes luck could produce | Backtest page |
 | Robustness verdict (**done on the Backtest page**) | Labels each strategy: Reject / Watchlist / Incubate / Candidate, from seven checks: unseen years profitable, edge kept from tuning, unseen stretches profitable, neighbouring settings, markets, Monte Carlo, enough trades | Walk-forward card; strategy pages later |
 | Alerts (**Telegram done**) | Automatic trades opening and closing, stops and targets hit, runs or accounts pausing, backup problems, weekly research; price levels and signal setups still to come | Settings → Alerts |
-| Economic calendar | Upcoming interest-rate decisions, jobs and inflation reports, shown on the chart; a warning before placing a trade shortly before a high-impact event | Panel beside the chart, trade panel |
-| Event pause for automatic runs | Optional per run: no new entries in a window around high-impact events (open trades keep their stop-losses) | Automatic run settings |
+| Economic calendar (**done**) | Upcoming interest-rate decisions, jobs and inflation reports, shown on the chart; a warning before placing a trade shortly before a high-impact event | Panel beside the chart, trade panel |
+| Event pause for automatic runs (**done**) | Optional per run: no new entries in a window around high-impact events (open trades keep their stop-losses) | Automatic run settings |
 | Market details and headlines (**done for the chart's hover card**) | Who a company is, its sector, size and a Wikipedia summary; what a currency, commodity, index or bond is and what moves it; recent headlines for US shares and funds (Alpha Vantage, at most 15 lookups a day so UK share prices keep some allowance) | ⓘ by the market name, and beside the market list |
 | News alerts | A Telegram alert when a major story breaks about a market you hold a paper trade in | Settings → Alerts |
 
@@ -128,7 +128,7 @@ Phase 4 adds ways to practise without waiting for the market, to build your own 
 - [ ] Builder strategies backtest, paper trade and feed the signal assistant like library strategies
 - [x] Walk-forward and Monte Carlo results appear on every backtest (walk-forward on demand, a button on the result)
 - [ ] Alerts arrive by email and, if set up, Telegram
-- [ ] Economic calendar shows the coming week's major events
+- [x] Economic calendar shows the coming week's major events
 - [ ] Headlines and news alerts work for markets you hold, and never open, close or change a trade
 
 **News is information, not a trade signal.** Free feeds arrive after prices have already moved, past news can't be
@@ -211,6 +211,6 @@ Phase 6 is built only after launch, ships switched off, and unlocks one strategy
 - [x] **Backup location:** Backblaze B2, encrypted, nightly at 02:30 UTC with a test restore (see `docs/BACKUPS.md`)
 - [ ] **Graduation criteria:** keep the proposed defaults in phase 5, or make any stricter
 - [ ] **Seconds charts:** add 5, 10, 15 and 30-second timeframes for OANDA markets (viewing only), and whether to add a live tick chart
-- [ ] **Economic calendar source:** confirm a free source whose terms allow this use during phase 4 (needs adding to the app's list of allowed web addresses). Headlines and company details: Alpha Vantage and Wikipedia (decided)
+- [x] **Economic calendar source:** official published schedules (Fed, BoE, ECB, BoJ, BLS, ONS), kept in the code and updated when the app warns; no new web addresses. Headlines and company details: Alpha Vantage and Wikipedia (decided)
 - [ ] **AI coach:** try it on your Claude plan's monthly credit first, or leave it switched off
 - [ ] **Before phase 6:** stay on the cPanel server or move the app to its own small server; choose a real-shares platform and whether to use a Stocks and Shares ISA

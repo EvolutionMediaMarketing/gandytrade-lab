@@ -421,7 +421,7 @@ def _run_dict(db: Session, run: AutoRun) -> dict:
         "direction": run.direction, "status": run.status, "createdAt": run.created_at.isoformat(),
         "lastCheckAt": run.last_check_at.isoformat() if run.last_check_at else None,
         "lastCandle": run.last_bar_ts, "message": run.last_message, "backtest": run.backtest or {},
-        "live": auto.live_results(db, run), "openTradeId": t.id if t else None,
+        "live": auto.live_results(db, run), "openTradeId": t.id if t else None, "eventPause": run.event_pause,
     }
 
 
@@ -490,14 +490,18 @@ def start_basket(body: NewBasketRuns, db: Session = Depends(get_session), user: 
 
 
 class RunChange(BaseModel):
-    action: str = Field(max_length=10)  # pause | resume | stop
+    action: str = Field(max_length=12)  # pause | resume | stop | event_pause
     close_open: bool = False
+    on: bool = False  # for event_pause
 
 
 @router.post("/auto/{run_id}")
 def change_run(run_id: int, body: RunChange, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
     try:
-        run = auto.change(db, user, run_id, body.action, body.close_open)
+        if body.action == "event_pause":
+            run = auto.set_event_pause(db, user, run_id, body.on)
+        else:
+            run = auto.change(db, user, run_id, body.action, body.close_open)
     except (auto.AutoError, paper.PaperError, ValueError, ProviderError) as exc:
         raise _fail(exc) from exc
     return _run_dict(db, run)

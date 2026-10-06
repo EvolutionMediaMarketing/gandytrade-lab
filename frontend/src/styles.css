@@ -711,3 +711,13 @@ ul.plain { margin: 0; padding-left: 18px; }
 .replay-news li { padding-left: 8px; border-left: 3px solid var(--amber); }
 .replay-news li.news { border-color: #c084fc; }
 .replay-news-text { display: block; color: var(--muted); }
+
+/* Economic calendar */
+.calendar-panel h2 { margin: 0 0 4px; }
+.calendar-day h3 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.calendar-day ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.calendar-day li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; font-size: 13px; opacity: 0.6; }
+.calendar-day li.affects { opacity: 1; }
+.calendar-time { font-family: var(--mono); color: #c084fc; }
+.calendar-what { display: block; color: var(--muted); font-size: 12.5px; margin: 2px 0; }
+.banner.event-soon { background: rgba(192, 132, 252, 0.12); color: #e9d5ff; }

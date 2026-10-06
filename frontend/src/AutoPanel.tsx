@@ -76,7 +76,8 @@ export default function AutoPanel({ account, catalogue, favourites, onToggleFavo
 
       {visible.length === 0 && !adding && <p className="muted">No automatic runs on this account yet.</p>}
       {visible.map((run) => (
-        <RunCard key={run.id} run={run} onChange={change} trades={trades.filter((t) => t.autoRunId === run.id)} onShowTrade={onShowTrade} />
+        <RunCard key={run.id} run={run} onChange={change} trades={trades.filter((t) => t.autoRunId === run.id)} onShowTrade={onShowTrade}
+          onPauseChanged={() => load()} />
       ))}
       {stoppedCount > 0 && (
         <button type="button" className="link-button small-text" onClick={() => setShowStopped((v) => !v)}>
@@ -103,8 +104,8 @@ export default function AutoPanel({ account, catalogue, favourites, onToggleFavo
 
 const SHOW_TRADES = 8;
 
-function RunCard({ run, onChange, trades, onShowTrade }: {
-  run: AutoRun; onChange: (run: AutoRun, action: "pause" | "resume" | "stop") => void;
+function RunCard({ run, onChange, trades, onShowTrade, onPauseChanged }: {
+  run: AutoRun; onChange: (run: AutoRun, action: "pause" | "resume" | "stop") => void; onPauseChanged?: () => void;
   trades: PaperTrade[]; onShowTrade: (t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) => void;
 }) {
   const [allTrades, setAllTrades] = useState(false);
@@ -131,6 +132,14 @@ function RunCard({ run, onChange, trades, onShowTrade }: {
         </span>
       </div>
       <p className="auto-msg">{run.message}</p>
+      {run.status !== "stopped" && (
+        <label className="check-row small-text" title="No new entries from 2 hours before to 2 hours after a rate decision, inflation or jobs report that moves this market. Open trades keep their stop-loss.">
+          <input type="checkbox" checked={!!run.eventPause} onChange={(e) => {
+            api.setEventPause(run.id, e.target.checked).then(() => onPauseChanged?.()).catch(() => onPauseChanged?.());
+          }} />
+          Event pause: no new entries 2 hours either side of big news for this market
+        </label>
+      )}
       <p className="muted small-text">Started {when(run.createdAt)} · last looked {when(run.lastCheckAt)}</p>
 
       <table className="auto-compare">
