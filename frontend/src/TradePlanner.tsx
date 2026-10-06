@@ -186,6 +186,10 @@ export default function TradePlanner({ symbol, timeframe, onPlaced, plan, onPlan
           </p>
           <dl className="facts">
             <dt>Lose if the stop is hit</dt><dd className="down">{money(-out.riskGbp)}</dd>
+            <dd className="facts-note muted">
+              {out.capped ? "Less than your risk setting: see the note below." :
+                `Stays at your ${settings.risk}% risk wherever the stop goes; moving the stop changes the number of ${CASH_CLASSES.includes(symbol.asset_class) ? "shares" : "units"} instead.`}
+            </dd>
             {gainGbp !== null && <><dt>Gain if the target is hit</dt><dd className="up">{money(gainGbp)}</dd></>}
             <dt>Typical costs (in and out)</dt><dd>{money(out.costGbp)}</dd>
             <dt>Position value</dt><dd>{money(out.valueGbp)}</dd>

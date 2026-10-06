@@ -673,3 +673,4 @@ ul.plain { margin: 0; padding-left: 18px; }
 .task p { margin: 0 0 8px; }
 .task textarea { width: 100%; font-family: var(--font); }
 .week-done { padding: 10px 14px; border-radius: var(--radius); background: rgba(52, 211, 153, 0.1); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.facts dd.facts-note { grid-column: 1 / -1; text-align: left; font-family: var(--font); font-size: 12px; margin-top: -4px; }
