@@ -193,7 +193,7 @@ export function step(m: ReplayMarket, prev: ReplayState): ReplayState {
 }
 
 /** Place an order to fill at the next candle's open. Returns an error message, or the new state. */
-export function placeOrder(m: ReplayMarket, s: ReplayState, side: 1 | -1, stop: number, target: number | null): ReplayState | string {
+export function queueEntry(m: ReplayMarket, s: ReplayState, side: 1 | -1, stop: number, target: number | null): ReplayState | string {
   if (s.pos || s.pending) return "One trade at a time: close or cancel the current one first.";
   if (ended(m, s)) return "The replay has ended.";
   if (m.mode === "cash" && side < 0) return "With real shares you can only buy.";

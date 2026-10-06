@@ -4,7 +4,7 @@ import { money } from "./BacktestPage";
 import ChartView, { type ChartMarker, type ShownTrade } from "./ChartView";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import {
-  atr, begin, ended, equityNow, moveStop, openPnl, placeOrder, score, step,
+  atr, begin, ended, equityNow, moveStop, openPnl, queueEntry, score, step,
   type ReplayMarket, type ReplayState, type Score,
 } from "./replayEngine";
 import type { ActiveIndicator, Catalogue, ChartData, ReplayData, ReplaySessionRow, SymbolInfo } from "./types";
@@ -237,7 +237,7 @@ function Session({ data, balance, risk, onAuthError, onQuit, onAgain }: {
   function place() {
     const stop = Number(stopText);
     const target = useTarget && targetText ? Number(targetText) : null;
-    const r = placeOrder(m, s, side, stop, target);
+    const r = queueEntry(m, s, side, stop, target);
     if (typeof r === "string") setError(r); else { setS(r); setError(null); }
   }
 
