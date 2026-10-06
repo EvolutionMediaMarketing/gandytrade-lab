@@ -426,5 +426,7 @@ class ReplaySession(Base):
     max_drawdown_pct: Mapped[float] = mapped_column(Float)
     avg_r: Mapped[float | None] = mapped_column(Float, nullable=True)
     lesson: Mapped[str] = mapped_column(String(500), default="")
+    # The trades you took (entry, exit, prices, result), so the replay can be looked at again. None for older sessions.
+    trades_detail: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -45,3 +45,49 @@ def test_sessions_are_saved_and_listed(signed_in):
     assert signed_in.post("/api/replay/results", json=body).status_code == 200
     rows = signed_in.get("/api/replay/results").json()["sessions"]
     assert len(rows) == 1 and rows[0]["avgR"] == pytest.approx(0.35) and rows[0]["lesson"] == "Waited for closes"
+
+
+def test_events_match_markets_by_tag():
+    from app.market import events
+    from app.market.symbols import get_symbol
+
+    gbp = events.tags_for(get_symbol("GBP_USD"))
+    assert {"gbp", "usd", "all"} <= gbp and "oil" not in gbp
+    brent = {e["title"] for e in events.for_market(get_symbol("BCO_USD"), 0, 2_000_000_000)}
+    assert "OPEC decides not to cut output" in brent and "UK votes to leave the EU" not in brent
+    cable = {e["title"] for e in events.for_market(get_symbol("GBP_USD"), 0, 2_000_000_000)}
+    assert "UK votes to leave the EU" in cable and "Lehman Brothers collapses" in cable  # "all"
+    # Dates are real days, in order, with every tag known.
+    known = {"all", "equities", "us_equities", "uk_equities", "eu_equities", "japan", "usd", "gbp", "eur", "jpy", "chf",
+             "aud", "cny", "gold", "silver", "metals", "oil", "gas", "energy", "grains"}
+    days = [e[0] for e in events.EVENTS]
+    assert days == sorted(days)
+    assert all(set(e[3]) <= known for e in events.EVENTS)
+
+
+def test_replay_includes_events_in_its_window(signed_in):
+    d = start(signed_in, symbol="GBP_USD", candles=120).json()
+    assert isinstance(d["events"], list)
+    lo, hi = d["bars"][0]["time"] - 7 * 86400, d["bars"][-1]["time"]
+    assert all(lo <= e["time"] <= hi for e in d["events"])
+
+
+def test_a_saved_replay_can_be_reopened_changed_and_deleted(signed_in):
+    first = start(signed_in, candles=60).json()
+    at = first["bars"][first["startIndex"]]["time"]
+    trades = [{"side": 1, "entryTime": at, "exitTime": at + 86400, "entryPrice": 1.1, "exitPrice": 1.2, "stop": 1.05,
+               "pnl": 4.0, "r": 2.0, "reason": "Target reached"}]
+    body = {"symbol": "EUR_USD", "timeframe": "1d", "start_ts": at, "end_ts": at + 86400 * 40, "candles": 40, "trades": 1,
+            "wins": 1, "net_gbp": 4.0, "return_pct": 2.0, "buy_hold_pct": 1.0, "max_drawdown_pct": 0.5, "avg_r": 2.0,
+            "lesson": "", "trades_detail": trades}
+    row = signed_in.post("/api/replay/results", json=body).json()
+    assert row["tradesDetail"] == trades
+    # Reopen exactly where it started.
+    again = start(signed_in, at=at, candles=140).json()
+    assert again["bars"][again["startIndex"]]["time"] == at
+    # Change the lesson without saving a second copy.
+    assert signed_in.patch(f"/api/replay/results/{row['id']}", json={"lesson": "Patience paid"}).json()["lesson"] == "Patience paid"
+    assert len(signed_in.get("/api/replay/results").json()["sessions"]) == 1
+    assert signed_in.delete(f"/api/replay/results/{row['id']}").json() == {"ok": True}
+    assert signed_in.get("/api/replay/results").json()["sessions"] == []
+    assert signed_in.delete(f"/api/replay/results/{row['id']}").status_code == 404

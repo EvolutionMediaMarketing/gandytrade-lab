@@ -19,7 +19,7 @@ from ..backtest.service import default_mode
 from ..db import get_session
 from ..deps import current_user
 from ..indicators.chart import build_chart
-from ..market import directory
+from ..market import directory, events
 from ..market.fx import converter, quote_currency
 from ..market.providers.base import ProviderError
 from ..market.service import get_history
@@ -45,6 +45,7 @@ class Start(BaseModel):
     symbol: str = Field(max_length=32)
     timeframe: str = Field("1d", max_length=4)
     start: str = Field("random", max_length=10)  # "random" or yyyy-mm-dd
+    at: int | None = None  # or the exact time of the first candle to play (to look at a saved replay again)
     candles: int = Field(250, ge=30, le=1000)
     style: str = Field("candles", max_length=20)
     mode: str = Field("", max_length=8)  # "" = the market's usual: real shares for shares, CFD otherwise
@@ -68,11 +69,16 @@ def start(body: Start, db: Session = Depends(get_session), _: User = Depends(cur
     n = len(bars)
     first_ok = min(LOOKBACK, max(0, n - body.candles - 1))
     last_ok = n - body.candles
-    if n < 80 or last_ok < 30:
+    if body.at is None and (n < 80 or last_ok < 30):
         raise HTTPException(status_code=400, detail=(
             f"Only {n} candles of history for {symbol.name} on this timeframe: not enough to replay "
             f"{body.candles}. Try fewer candles or a longer timeframe."))
-    if body.start == "random":
+    if body.at is not None:
+        s = next((i for i, b in enumerate(bars) if b.ts >= body.at), n)
+        if s >= n:
+            raise HTTPException(status_code=400, detail="That replay's candles are no longer in the price history.")
+        s = max(s, 30)
+    elif body.start == "random":
         s = random.randint(max(first_ok, 30), max(max(first_ok, 30), last_ok))
     else:
         try:
@@ -87,6 +93,8 @@ def start(body: Start, db: Session = Depends(get_session), _: User = Depends(cur
         s = max(s, 30)
     shown_from = max(0, s - LOOKBACK)
     window = bars[max(0, shown_from - WARMUP): s + body.candles]
+    if body.at is not None and len(window) < 2:
+        raise HTTPException(status_code=400, detail="Not enough candles to show that replay.")
     style = body.style if body.style in STYLES else "candles"
     chart = build_chart(window, tf, style, [i.model_dump() for i in body.indicators])
     cut = bars[shown_from].ts
@@ -105,6 +113,8 @@ def start(body: Start, db: Session = Depends(get_session), _: User = Depends(cur
         "rates": [conv.rate(b["time"]) for b in chart["bars"]],  # price units per £1, candle by candle
         "mode": mode, "costs": default_costs(symbol.asset_class, mode).to_dict(),
         "leverage": leverage_cap(symbol.code, symbol.asset_class, mode),
+        # Major news that touched this market in the window (the browser shows each once its candle is revealed).
+        "events": events.for_market(symbol, chart["bars"][0]["time"] - 7 * 86400, chart["bars"][-1]["time"]) if chart["bars"] else [],
     }
 
 
@@ -122,13 +132,14 @@ class Result(BaseModel):
     max_drawdown_pct: float = Field(ge=0, le=100)
     avg_r: float | None = None
     lesson: str = Field("", max_length=500)
+    trades_detail: list[dict] | None = Field(None, max_length=500)
 
 
 def _dict(r: ReplaySession) -> dict:
     return {"id": r.id, "symbol": r.symbol, "timeframe": r.timeframe, "startTs": r.start_ts, "endTs": r.end_ts,
             "candles": r.candles, "trades": r.trades, "wins": r.wins, "netGbp": r.net_gbp, "returnPct": r.return_pct,
             "buyHoldPct": r.buy_hold_pct, "maxDrawdownPct": r.max_drawdown_pct, "avgR": r.avg_r, "lesson": r.lesson,
-            "createdAt": r.created_at.isoformat()}
+            "createdAt": r.created_at.isoformat(), "tradesDetail": r.trades_detail}
 
 
 @router.post("/results")
@@ -142,6 +153,32 @@ def save(body: Result, db: Session = Depends(get_session), user: User = Depends(
         db.delete(db.get(ReplaySession, i))
     db.commit()
     return _dict(row)
+
+
+def _mine(db: Session, user: User, session_id: int) -> ReplaySession:
+    row = db.get(ReplaySession, session_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    return row
+
+
+class Lesson(BaseModel):
+    lesson: str = Field("", max_length=500)
+
+
+@router.patch("/results/{session_id}")
+def change(session_id: int, body: Lesson, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    row = _mine(db, user, session_id)
+    row.lesson = body.lesson.strip()
+    db.commit()
+    return _dict(row)
+
+
+@router.delete("/results/{session_id}")
+def delete(session_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    db.delete(_mine(db, user, session_id))
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/results")

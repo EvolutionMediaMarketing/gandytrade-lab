@@ -748,8 +748,16 @@ export interface ReplayData extends ChartData {
   mode: "cash" | "cfd";
   costs: { spread_pct: number; slippage_pct: number; commission_gbp: number; fx_fee_pct: number; stamp_duty_pct: number; financing_pct_year: number };
   leverage: number;
+  /** Major news that touched this market in the window: shown once its candle is revealed. */
+  events: { date: string; time: number; title: string; text: string }[];
 }
 export interface ReplaySessionRow {
   id: number; symbol: string; timeframe: string; startTs: number; endTs: number; candles: number; trades: number; wins: number;
   netGbp: number; returnPct: number; buyHoldPct: number; maxDrawdownPct: number; avgR: number | null; lesson: string; createdAt: string;
+  /** The trades taken, to look at the replay again (missing on replays saved before this was kept). */
+  tradesDetail: ReplayTrade[] | null;
+}
+export interface ReplayTrade {
+  side: 1 | -1; entryTime: number; exitTime: number; entryPrice: number; exitPrice: number; stop: number;
+  pnl: number; r: number | null; reason: string;
 }

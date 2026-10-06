@@ -15,7 +15,7 @@ has the full plan and `CLAUDE.md` the hard rules.
 - Check after a reboot: `runuser -u gandytradeco -- env XDG_RUNTIME_DIR=/run/user/$(id -u gandytradeco) systemctl --user is-active gandytrade-db gandytrade-app gandytrade-worker` (expect `active` three times).
 - Backups: nightly encrypted to Backblaze B2 at 02:30 UTC with a test restore (`docs/BACKUPS.md`).
 - Alerts: Telegram bot (trades, problems, research, weekly review reminder). Secrets only in `~/gandytrade/app.env`.
-- Tests: `cd backend && python -m pytest -q` (283 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0017.
+- Tests: `cd backend && python -m pytest -q` (286 passing). Frontend: `cd frontend && npm run build`. Latest migration: 0018.
 
 ## What's built (phases 2 and 3, plus parts of 4)
 
@@ -68,6 +68,11 @@ has the full plan and `CLAUDE.md` the hard rules.
   £ rates, costs, mode and leverage. The browser reveals one candle at a time (`frontend/src/replayEngine.ts`, same fill
   rules as the backtester: next open, stop first, costs, 1% sizing; one trade at a time). Score vs holding; sessions
   saved (`replay_sessions`, migration 0017). Future candles are in the browser's memory: it's practice, not a vault.
+  News on replays: `backend/app/market/events.py` holds ~85 hand-checked market-moving events (2008–2025), tagged by
+  market type and dated to the first trading day markets could react; each says only what happened that day. Replay
+  marks them (purple "News") plus "big moves" (≥ 3 × the average move of the previous 20 candles, and ≥ 0.5%), with
+  hover notes and a link to Wikipedia's Current events page for that day (a link only; nothing fetched). Saved replays
+  keep their trades (migration 0018), open again with 100 candles after, can be deleted, and saving twice updates.
 - Market details hover card (ⓘ by the market name, and beside the market list): Wikipedia summary, Alpha Vantage
   sector/size and US headlines (at most 15 Alpha Vantage lookups a day), hand-written notes for currencies,
   commodities, indices and bonds. Information only.

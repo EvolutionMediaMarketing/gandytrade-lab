@@ -698,3 +698,16 @@ ul.plain { margin: 0; padding-left: 18px; }
   .page.replay { grid-template-columns: 1fr; }
   .replay-chart .chart-area { min-height: 360px; }
 }
+
+/* Hover notes on the chart (news, big moves) */
+.chart-note { position: absolute; z-index: 5; max-width: 320px; pointer-events: none; display: grid; gap: 6px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); font-size: 12.5px; }
+.chart-note-item { display: grid; gap: 2px; padding-left: 8px; border-left: 3px solid; }
+.chart-note-item.news { border-color: #c084fc; }
+.chart-note-item.move { border-color: var(--amber); }
+.chart-note-item span { color: var(--muted); line-height: 1.4; }
+.replay-news h3 { margin: 0 0 4px; font-size: 13px; }
+.replay-news ul { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 6px; font-size: 12.5px; max-height: 260px; overflow-y: auto; }
+.replay-news li { padding-left: 8px; border-left: 3px solid var(--amber); }
+.replay-news li.news { border-color: #c084fc; }
+.replay-news-text { display: block; color: var(--muted); }

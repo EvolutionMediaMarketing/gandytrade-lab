@@ -112,6 +112,15 @@ interface ChartViewProps {
   trade?: ShownTrade | null;
   /** Paper price orders waiting on this market: a dotted line at each order's level. */
   orders?: { id: number; level: number; kind: string }[];
+  /** Notes shown when you hover over a candle (news, big moves), keyed by the candle's time. */
+  notes?: ChartNote[];
+}
+
+export interface ChartNote {
+  time: number; // the candle it belongs to
+  kind: "news" | "move";
+  title: string;
+  text: string;
 }
 
 export interface ShownTrade {
@@ -142,7 +151,11 @@ export interface TradeMark {
   pnl?: number | null;
 }
 
-export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade, orders }: ChartViewProps) {
+export default function ChartView({ data, live, markers, focusTime, plan, onPlanChange, trade, orders, notes }: ChartViewProps) {
+  const notesRef = useRef<Map<number, ChartNote[]>>(new Map());
+  notesRef.current = new Map();
+  for (const nt of notes ?? []) notesRef.current.set(nt.time, [...(notesRef.current.get(nt.time) ?? []), nt]);
+  const [hover, setHover] = useState<{ x: number; y: number; notes: ChartNote[] } | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const mainRef = useRef<ISeriesApi<SeriesType> | null>(null);
@@ -479,6 +492,8 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
     chart.subscribeCrosshairMove((param) => {
       const t = param.time as number | undefined;
       setLegend((t !== undefined && byTime.get(t)) || data.bars[n - 1] || null);
+      const here = t !== undefined ? notesRef.current.get(t) : undefined;
+      setHover(here && param.point ? { x: param.point.x, y: param.point.y, notes: here } : null);
     });
 
     syncPlan();
@@ -573,6 +588,19 @@ export default function ChartView({ data, live, markers, focusTime, plan, onPlan
         )}
       </div>
       <div ref={host} className="chart-host" />
+      {hover && (
+        <div className="chart-note" role="tooltip" style={{
+          left: hover.x, top: hover.y + (host.current?.offsetTop ?? 0),
+          transform: `translate(${hover.x > (host.current?.clientWidth ?? 0) / 2 ? "calc(-100% - 14px)" : "14px"}, 8px)`,
+        }}>
+          {hover.notes.map((nt, i) => (
+            <div key={i} className={`chart-note-item ${nt.kind}`}>
+              <b>{nt.title}</b>
+              <span>{nt.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
