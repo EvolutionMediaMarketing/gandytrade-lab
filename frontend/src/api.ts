@@ -1,5 +1,5 @@
 import type {
-  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder,
+  ActiveIndicator, AlertStatus, BasketResult, ReviewSummary, WeeklyReview, AutoOptions, Performance, BackupStatus, AutoRun, ResearchJob, ResearchOptions, BacktestRequest, BacktestResult, BacktestSummary, Catalogue, ChartData, PaperAccount, PaperEvent, PaperOrder, PaperTrade, LivePrice, PositionSize, Quote, SignalsResponse, TargetOdds, StrategiesResponse, SymbolInfo, MarketInfo, WalkForward, PriceOrder, JournalTrade,
 } from "./types";
 
 export class ApiError extends Error {
@@ -101,6 +101,7 @@ export const api = {
     trail_distance?: number; clear_trail?: boolean }) =>
     request<PriceOrder>(`/api/paper/price-orders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   cancelPriceOrder: (id: number) => request<PriceOrder>(`/api/paper/price-orders/${id}/cancel`, { method: "POST" }),
+  journal: () => request<{ trades: JournalTrade[]; limited: boolean }>("/api/paper/journal"),
   setTrailing: (id: number, distance: number | null) =>
     request<{ trade: PaperTrade }>(`/api/paper/trades/${id}/trailing`, { method: "POST", body: JSON.stringify({ distance }) }),
   changePaperTrade: (id: number, body: { stop?: number; target?: number; clear_target?: boolean; notes?: string; lesson?: string; mood?: string;

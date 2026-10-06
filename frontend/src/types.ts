@@ -359,6 +359,14 @@ export interface PaperTrade {
   sample?: boolean;
 }
 
+/** A trade as listed on the Journal page: every account, with the account's name. */
+export interface JournalTrade extends PaperTrade {
+  accountId: number;
+  accountName: string;
+  accountArchived: boolean;
+  strategyName: string;
+}
+
 export interface PaperAccount {
   id: number;
   name: string;

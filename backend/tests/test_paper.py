@@ -284,3 +284,13 @@ def test_safeguard_settings_have_safe_ranges(signed_in, market):
     assert (a["riskPct"], a["maxOpenRiskPct"], a["dailyLossPct"], a["maxDrawdownPct"]) == (0.5, 6, 2, 15)
     for bad in ({"risk_pct": 3}, {"daily_loss_pct": 8}, {"max_drawdown_pct": 40}, {"max_open_risk_pct": 0.5}):
         assert signed_in.patch(f"/api/paper/accounts/{cfd}", json=bad).status_code == 422, bad
+
+
+def test_journal_lists_trades_from_every_account(signed_in, market):
+    accs = accounts(signed_in)
+    order(signed_in, accs["cfd"]["id"], reason="Breakout above last week's high")
+    order(signed_in, accs["cash"]["id"], reason="Pullback to the 50 average in an uptrend")
+    rows = signed_in.get("/api/paper/journal").json()["trades"]
+    assert len(rows) == 2
+    assert {r["accountName"] for r in rows} == {accs["cfd"]["name"], accs["cash"]["name"]}
+    assert all(r["accountId"] and "reason" in r and "lesson" in r for r in rows)

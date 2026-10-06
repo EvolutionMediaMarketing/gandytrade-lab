@@ -51,7 +51,7 @@ def _trade_dict(t: PaperTrade, v: "paper.Valued | None" = None, db: Session | No
         "source": t.source, "strategy": t.strategy, "autoRunId": t.auto_run_id, "trend": t.trend, "reason": t.reason, "mood": t.mood,
         "notes": t.notes, "lesson": t.lesson, "ruleFlags": t.rule_flags or [],
         "ruleScore": t.rule_score if t.rule_score is not None else paper.score(t.rule_flags or []),
-        "trailDistance": t.trail_distance,
+        "trailDistance": t.trail_distance, "accountId": t.account_id,
     }
     if db is not None:
         d["precision"], d["name"] = _market(db, t.symbol)
@@ -185,6 +185,25 @@ def coach_export(account_id: int, db: Session = Depends(get_session), user: User
     except paper.PaperError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"text": perf.coach_export(db, acct)}
+
+
+JOURNAL_LIMIT = 2000
+
+
+@router.get("/journal")
+def journal(db: Session = Depends(get_session), user: User = Depends(current_user)) -> dict:
+    """Every trade on every paper account, newest first, with its journal entry (the Journal page filters them)."""
+    accts = {a.id: a for a in db.scalars(select(PaperAccount).where(PaperAccount.user_id == user.id))}
+    trades = db.scalars(select(PaperTrade).where(PaperTrade.account_id.in_(list(accts) or [-1]))
+                        .order_by(PaperTrade.entry_time.desc(), PaperTrade.id.desc()).limit(JOURNAL_LIMIT)).all()
+    out = []
+    for t in trades:
+        d = _trade_dict(t, db=db)
+        d["accountName"] = accts[t.account_id].name
+        d["accountArchived"] = accts[t.account_id].archived
+        d["strategyName"] = (STRATEGIES[t.strategy].name if t.strategy in STRATEGIES else t.strategy) if t.source == "auto" else ""
+        out.append(d)
+    return {"trades": out, "limited": len(trades) >= JOURNAL_LIMIT}
 
 
 @router.get("/accounts/{account_id}")

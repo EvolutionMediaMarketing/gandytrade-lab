@@ -3,6 +3,7 @@ import { api, ApiError } from "./api";
 import ChartView from "./ChartView";
 import BacktestPage, { type BacktestInit } from "./BacktestPage";
 import LearnPage from "./LearnPage";
+import JournalPage from "./JournalPage";
 import MarketPicker, { displayCode } from "./MarketPicker";
 import PaperPage from "./PaperPage";
 import DashboardPage from "./DashboardPage";
@@ -16,7 +17,7 @@ import SignalPanel from "./SignalPanel";
 import TradePlanner from "./TradePlanner";
 import { useLivePrices } from "./useLivePrices";
 import ToolsPage from "./ToolsPage";
-import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit, PriceOrder } from "./types";
+import type { ActiveIndicator, Catalogue, ChartData, IndicatorDef, SymbolInfo, AutoPrefill, BasketInit, PriceOrder, PaperTrade } from "./types";
 
 const STYLE_LABELS: Record<string, string> = {
   candles: "Candles",
@@ -78,6 +79,7 @@ const PAGES = [
   { key: "backtest", label: "Backtest" },
   { key: "research", label: "Research" },
   { key: "paper", label: "Paper" },
+  { key: "journal", label: "Journal" },
   { key: "dashboard", label: "Dashboard" },
   { key: "review", label: "Review" },
   { key: "tools", label: "Tools" },
@@ -281,6 +283,21 @@ export default function Workspace({ username, onSignedOut }: { username: string;
     if (panel === "plan" && plan === null) startPlan("long");
   }, [panel, plan, startPlan]);
 
+  // Open the Charts page on a paper trade, with its lines and marks (from the Paper and Journal pages).
+  function showTrade(t: PaperTrade, opts?: { others?: PaperTrade[]; all?: boolean; label?: string }) {
+    const secs = (iso: string | null) => (iso ? Math.floor(Date.parse(iso) / 1000) : null);
+    const others = (opts?.others ?? []).map((o) => ({ id: o.id, side: o.side, entryTime: secs(o.entryTime)!,
+      exitTime: o.status === "closed" ? secs(o.exitTime) : null, pnl: o.status === "closed" ? o.pnl : o.unrealised ?? null }));
+    setShownTrade({ id: opts?.all ? -t.id : t.id, symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
+      entryTime: secs(t.entryTime)!, stop: t.stop, target: t.target,
+      exitPrice: t.status === "closed" ? t.exitPrice : null,
+      exitTime: t.status === "closed" ? secs(t.exitTime) : null,
+      pnl: t.pnl, exitReason: t.exitReason, others, allOnly: !!opts?.all, label: opts?.label });
+    const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === t.timeframe);
+    update(tfKnown ? { symbol: t.symbol, timeframe: t.timeframe } : { symbol: t.symbol });
+    go("charts");
+  }
+
   function toggleIndicator(def: IndicatorDef) {
     const active = prefs.indicators.find((i) => i.type === def.type);
     if (active) update({ indicators: prefs.indicators.filter((i) => i !== active) });
@@ -355,19 +372,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "paper" && (
         <PaperPage onAuthError={handleAuth}
-          onShowTrade={(t, opts) => {
-            const secs = (iso: string | null) => (iso ? Math.floor(Date.parse(iso) / 1000) : null);
-            const others = (opts?.others ?? []).map((o) => ({ id: o.id, side: o.side, entryTime: secs(o.entryTime)!,
-              exitTime: o.status === "closed" ? secs(o.exitTime) : null, pnl: o.status === "closed" ? o.pnl : o.unrealised ?? null }));
-            setShownTrade({ id: opts?.all ? -t.id : t.id, symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
-              entryTime: secs(t.entryTime)!, stop: t.stop, target: t.target,
-              exitPrice: t.status === "closed" ? t.exitPrice : null,
-              exitTime: t.status === "closed" ? secs(t.exitTime) : null,
-              pnl: t.pnl, exitReason: t.exitReason, others, allOnly: !!opts?.all, label: opts?.label });
-            const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === t.timeframe);
-            update(tfKnown ? { symbol: t.symbol, timeframe: t.timeframe } : { symbol: t.symbol });
-            go("charts");
-          }}
+          onShowTrade={showTrade}
           onShowOrder={(o) => {
             setShownTrade(null);
             const tfKnown = (catalogue?.timeframes ?? []).some((x) => x.code === o.timeframe);
@@ -389,6 +394,7 @@ export default function Workspace({ username, onSignedOut }: { username: string;
       )}
       {page === "dashboard" && <DashboardPage onAuthError={handleAuth} />}
       {page === "review" && <ReviewPage onAuthError={handleAuth} />}
+      {page === "journal" && <JournalPage onAuthError={handleAuth} onShowTrade={(t) => showTrade(t)} />}
       {page === "settings" && <SettingsPage onAuthError={handleAuth} />}
       {page === "learn" && (
         <LearnPage onBacktest={(strategy) => { setBacktestInit({ strategy }); go("backtest"); }} />

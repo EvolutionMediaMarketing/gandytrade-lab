@@ -7,7 +7,7 @@ import type { AutoPrefill, Catalogue, PaperAccount, PaperEvent, PaperTrade, Pric
 import { useLivePrices } from "./useLivePrices";
 
 const REFRESH_MS = 30_000;
-const MOOD_LABEL: Record<string, string> = {
+export const MOOD_LABEL: Record<string, string> = {
   calm: "Calm", confident: "Confident", unsure: "Unsure", anxious: "Anxious", bored: "Bored", fomo: "Fear of missing out", frustrated: "Frustrated",
 };
 const when = (iso: string | null) =>
@@ -510,7 +510,7 @@ function NewAccount({ onDone, onAuthError }: { onDone: (id?: number) => void; on
   );
 }
 
-function Journal({ trade, onClose, onSaved, onAuthError }: { trade: PaperTrade; onClose: () => void; onSaved: () => void; onAuthError: (err: unknown) => void }) {
+export function Journal({ trade, onClose, onSaved, onAuthError }: { trade: PaperTrade; onClose: () => void; onSaved: () => void; onAuthError: (err: unknown) => void }) {
   const [notes, setNotes] = useState(trade.notes);
   const [lesson, setLesson] = useState(trade.lesson);
   const [events, setEvents] = useState<PaperEvent[]>([]);
