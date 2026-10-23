@@ -1,2 +1,2 @@
 -c requirements.txt
-pytest==8.3.4
+pytest==8.4.2
